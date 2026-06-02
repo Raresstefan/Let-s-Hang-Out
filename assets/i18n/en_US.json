@@ -25,8 +25,10 @@
   },
   "feed": {
     "title": "Discover",
+    "subtitle": "Find something to do near you",
     "empty": "No activities yet. Be the first to create one!",
-    "suggestedBanner": "People liked this / signed up for this",
+    "suggestedBanner": "People liked this",
+    "likedCount": "{count} liked",
     "filters": {
       "all": "All",
       "drinks": "Drinks",
@@ -42,7 +44,7 @@
     "startsIn": "Starts {when}",
     "hostedBy": "Hosted by {name}",
     "placeholder": {
-      "title": "What are you up to? (e.g. Beers after work)",
+      "title": "e.g. Beers after work",
       "description": "Describe the activity. e.g. Tennis match, 2 hours",
       "place": "Where? Suggest a place",
       "startDate": "When does it start?"
@@ -52,12 +54,19 @@
       "description": "Description",
       "place": "Place suggestion",
       "startDate": "Start date & time",
-      "coverImage": "Cover image"
+      "coverImage": "Cover image",
+      "optional": "optional"
     },
     "create": {
       "title": "Create activity",
       "submit": "Create activity",
-      "coverHint": "Add a cover photo so people notice your activity"
+      "coverHint": "Drag & drop a cover photo here"
+    },
+    "validation": {
+      "titleRequired": "A title is needed for creating the activity",
+      "placeRequired": "The location is needed for creating the activity",
+      "startRequired": "The starting date is needed to create the activity",
+      "startInPast": "Pick a start time in the future."
     }
   },
   "myActivities": {
@@ -73,9 +82,25 @@
   },
   "profile": {
     "title": "Profile",
-    "activitiesJoined": "Activities joined",
-    "activitiesHosted": "Activities hosted",
-    "friendsCount": "Friends"
+    "handle": "@{handle}",
+    "bioPlaceholder": "Add a short bio so people know what you're into.",
+    "editProfile": "Edit profile",
+    "interests": "Your interests",
+    "addInterest": "Add",
+    "avatarHint": "Tap or drop a photo to set your picture",
+    "comingSoon": "Coming soon",
+    "stats": {
+      "joined": "Joined",
+      "hosted": "Hosted",
+      "friends": "Friends"
+    },
+    "settings": {
+      "title": "Settings",
+      "notifications": "Notifications",
+      "language": "Language (EN)",
+      "privacy": "Privacy",
+      "logout": "Log out"
+    }
   },
   "chat": {
     "title": "Group chat",

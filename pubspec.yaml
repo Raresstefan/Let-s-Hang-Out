@@ -29,6 +29,9 @@ dependencies:
 
   # Date formatting helpers for activity start times
   timeago: ^3.7.0
+  file_picker: ^11.0.2
+  desktop_drop: ^0.7.1
+  google_fonts: ^8.1.0
 
   # NOTE: Firebase packages are intentionally NOT added yet.
   # The app runs entirely on mock repositories so it builds & runs on web

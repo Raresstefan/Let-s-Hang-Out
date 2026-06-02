@@ -19,8 +19,21 @@ class FeedScreen extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(l.tr('feed.title'),
-            style: Theme.of(context).textTheme.headlineSmall),
+        toolbarHeight: 72,
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(l.tr('feed.title'),
+                style: Theme.of(context).textTheme.headlineMedium),
+            Text(
+              l.tr('feed.subtitle'),
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+            ),
+          ],
+        ),
       ),
       body: RefreshIndicator(
         onRefresh: controller.load,
@@ -29,6 +42,7 @@ class FeedScreen extends StatelessWidget {
             EmojiFilterBar(
               active: controller.activeFilter,
               onSelected: controller.toggleFilter,
+              onClear: controller.clearFilter,
             ),
             Expanded(child: _buildBody(context, l, controller, analytics)),
           ],

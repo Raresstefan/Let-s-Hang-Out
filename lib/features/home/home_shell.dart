@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/analytics/analytics_service.dart';
 import '../../core/l10n/app_localizations.dart';
+import '../../core/theme/app_theme.dart';
 import '../create/create_activity_screen.dart';
 import '../feed/feed_screen.dart';
 import '../friends/friends_screen.dart';
@@ -47,49 +48,56 @@ class _HomeShellState extends State<HomeShell> {
 
     return Scaffold(
       body: IndexedStack(index: _index, children: _pages),
-      floatingActionButton: FloatingActionButton.large(
-        onPressed: _openCreate,
-        tooltip: l.tr('nav.create'),
-        elevation: 6,
-        child: const Icon(Icons.add, size: 36),
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
-      bottomNavigationBar: BottomAppBar(
-        shape: const CircularNotchedRectangle(),
-        notchMargin: 8,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            _NavItem(
-              icon: Icons.explore_outlined,
-              selectedIcon: Icons.explore,
-              label: l.tr('feed.title'),
-              selected: _index == 0,
-              onTap: () => _select(0),
-            ),
-            _NavItem(
-              icon: Icons.people_outline,
-              selectedIcon: Icons.people,
-              label: l.tr('nav.friends'),
-              selected: _index == 1,
-              onTap: () => _select(1),
-            ),
-            const SizedBox(width: 48), // notch gap for the FAB
-            _NavItem(
-              icon: Icons.event_available_outlined,
-              selectedIcon: Icons.event_available,
-              label: l.tr('nav.myActivities'),
-              selected: _index == 2,
-              onTap: () => _select(2),
-            ),
-            _NavItem(
-              icon: Icons.person_outline,
-              selectedIcon: Icons.person,
-              label: l.tr('nav.profile'),
-              selected: _index == 3,
-              onTap: () => _select(3),
-            ),
-          ],
+      // The create button lives *inside* the bottom menu (see _CreateButton),
+      // not as a floating overlay — so it never covers the activity cards.
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: Container(
+          margin: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(28),
+            boxShadow: AppTheme.softShadow(opacity: 0.12, blur: 22),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              _NavItem(
+                icon: Icons.explore_outlined,
+                selectedIcon: Icons.explore,
+                label: l.tr('feed.title'),
+                selected: _index == 0,
+                onTap: () => _select(0),
+              ),
+              _NavItem(
+                icon: Icons.people_outline,
+                selectedIcon: Icons.people,
+                label: l.tr('nav.friends'),
+                selected: _index == 1,
+                onTap: () => _select(1),
+              ),
+              _CreateButton(
+                label: l.tr('nav.create'),
+                onTap: _openCreate,
+              ),
+              _NavItem(
+                icon: Icons.event_available_outlined,
+                selectedIcon: Icons.event_available,
+                label: l.tr('nav.myActivities'),
+                selected: _index == 2,
+                onTap: () => _select(2),
+              ),
+              _NavItem(
+                icon: Icons.person_outline,
+                selectedIcon: Icons.person,
+                label: l.tr('nav.profile'),
+                selected: _index == 3,
+                onTap: () => _select(3),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -118,20 +126,91 @@ class _NavItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = selected
-        ? Theme.of(context).colorScheme.primary
-        : Theme.of(context).colorScheme.onSurfaceVariant;
+    final primary = Theme.of(context).colorScheme.primary;
+    final color =
+        selected ? primary : Theme.of(context).colorScheme.onSurfaceVariant;
     return Expanded(
       child: InkWell(
         onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 6),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(selected ? selectedIcon : icon, color: color, size: 24),
+              // Tonal pill behind the icon marks the active tab.
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                decoration: BoxDecoration(
+                  color: selected
+                      ? primary.withValues(alpha: 0.12)
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Icon(selected ? selectedIcon : icon,
+                    color: color, size: 24),
+              ),
+              const SizedBox(height: 3),
               Text(label,
-                  style: TextStyle(color: color, fontSize: 11),
+                  style: TextStyle(
+                      color: color,
+                      fontSize: 11,
+                      fontWeight: selected ? FontWeight.w600 : FontWeight.w500),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The centre "+" item of the bottom menu. It lives inside the bar (not as a
+/// floating overlay) and is the most highlighted action: a filled primary
+/// circle that visually pops above the flat nav icons.
+class _CreateButton extends StatelessWidget {
+  const _CreateButton({required this.label, required this.onTap});
+
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Expanded(
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  gradient: AppTheme.brandGradient,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppTheme.seed.withValues(alpha: 0.5),
+                      blurRadius: 16,
+                      offset: const Offset(0, 5),
+                    ),
+                  ],
+                ),
+                child: const Icon(Icons.add_rounded, color: Colors.white, size: 32),
+              ),
+              const SizedBox(height: 2),
+              Text(label,
+                  style: TextStyle(
+                    color: scheme.primary,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis),
             ],

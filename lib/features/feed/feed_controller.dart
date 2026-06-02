@@ -58,6 +58,14 @@ class FeedController extends ChangeNotifier {
     await load();
   }
 
+  /// Clear any active filter (the "All" pill).
+  Future<void> clearFilter() async {
+    if (_activeFilter == null) return;
+    _analytics.buttonClicked('filter_all');
+    _activeFilter = null;
+    await load();
+  }
+
   Future<void> join(Activity activity) async {
     _analytics.buttonClicked('join_activity', params: {'activity_id': activity.id});
     try {

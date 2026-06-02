@@ -44,6 +44,65 @@ flutter run -d android
 
 To list available devices: `flutter devices`.
 
+### Running the Android emulator from the command line
+
+If you'd rather not use Android Studio's UI, you can launch the emulator and run
+the app entirely from the terminal.
+
+**One-time: put the Android SDK tools on your PATH** (add to `~/.zshrc`):
+```bash
+export ANDROID_HOME="$HOME/Library/Android/sdk"
+export ANDROID_SDK_ROOT="$ANDROID_HOME"
+export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH"
+```
+Then `source ~/.zshrc` (or open a new terminal).
+
+**List the available virtual devices (AVDs):**
+```bash
+emulator -list-avds
+```
+
+**Launch an emulator (visible window):**
+```bash
+# Replace Pixel_8_API_35 with one from the list above.
+# Run in the background so the terminal stays free; -no-snapshot = clean cold boot.
+emulator -avd Pixel_8_API_35 -no-snapshot -gpu auto &
+```
+> Don't pass `-no-window`/`-qt-hide-window` — those launch it headless (no visible
+> screen). Plain `emulator -avd <name>` shows a normal window.
+
+**Wait until it's fully booted, then confirm it's online:**
+```bash
+adb wait-for-device
+adb devices          # should show: emulator-5554   device
+```
+
+**Run the app on it:**
+```bash
+flutter run                      # auto-picks the only running device
+# or target it explicitly:
+flutter run -d emulator-5554
+```
+
+**Hot reload — yes, it works here.** While `flutter run` is attached, the terminal
+accepts the interactive keys:
+- `r` — **hot reload** (fast, keeps app state) — for widget/logic tweaks
+- `R` — **hot restart** (re-runs `main()`) — needed after editing JSON/assets,
+  `main.dart`, providers, or app-root wiring
+- `q` — quit (stops the app)
+
+**Shut the emulator down when done:**
+```bash
+adb -s emulator-5554 emu kill
+```
+
+Troubleshooting:
+- `flutter devices` shows nothing but `adb devices` shows the emulator → the iOS/
+  Xcode probe is failing; run `sudo xcodebuild -license accept` once to silence it.
+- "Error opening emulator" → an instance of that AVD is already running (e.g. one
+  Android Studio launched headless). Kill it first: `adb emu kill` or
+  `pkill -f qemu-system`.
+
 ### Test & analyze
 ```bash
 flutter test        # widget/unit tests

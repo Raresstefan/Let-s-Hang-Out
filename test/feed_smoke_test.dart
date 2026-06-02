@@ -17,8 +17,11 @@ void main() {
     );
 
     // Initial frame shows a loading spinner, then the seeded activities load.
+    // NOTE: we use timed pumps rather than pumpAndSettle — the activity cards
+    // render CachedNetworkImage, whose loading keeps the scheduler busy so
+    // pumpAndSettle would never settle in the test environment.
     await tester.pump(const Duration(milliseconds: 400));
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 400));
 
     // The discover title and emoji filter bar are present.
     expect(find.text('Discover'), findsWidgets);
@@ -28,8 +31,8 @@ void main() {
     expect(find.byType(ActivityCard), findsWidgets);
     expect(find.textContaining('Beers after work'), findsOneWidget);
 
-    // The highlighted centre create FAB exists.
-    expect(find.byType(FloatingActionButton), findsOneWidget);
+    // The highlighted centre "Create" action lives in the bottom menu.
+    expect(find.text('Create'), findsOneWidget);
     expect(find.byIcon(Icons.add), findsWidgets);
   });
 

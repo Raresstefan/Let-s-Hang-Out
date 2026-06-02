@@ -3,6 +3,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
 
 import 'core/analytics/analytics_service.dart';
+import 'core/app_scroll_behavior.dart';
 import 'core/l10n/app_localizations.dart';
 import 'core/theme/app_theme.dart';
 import 'data/repositories/activity_repository.dart';
@@ -37,6 +38,8 @@ class HangOutApp extends StatelessWidget {
       child: MaterialApp(
         title: 'Hang Out',
         debugShowCheckedModeBanner: false,
+        // Smooth, phone-like momentum + trackpad-draggable horizontal lists.
+        scrollBehavior: const AppScrollBehavior(),
         theme: AppTheme.light(),
         // Localization: JSON-backed, en_US only for now.
         localizationsDelegates: const [
