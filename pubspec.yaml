@@ -1,0 +1,51 @@
+name: hangout
+description: "Hang Out — a social network that facilitates socialising activities."
+publish_to: 'none'
+version: 0.1.0
+
+environment:
+  sdk: ^3.9.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+
+  # State management
+  provider: ^6.1.2
+
+  # Routing
+  go_router: ^14.6.2
+
+  # Localization: load text from JSON asset files
+  intl: ^0.20.2
+
+  # UUIDs for mock data / client-side ids
+  uuid: ^4.5.1
+
+  # Caching network images on the activity cards
+  cached_network_image: ^3.4.1
+
+  # Date formatting helpers for activity start times
+  timeago: ^3.7.0
+
+  # NOTE: Firebase packages are intentionally NOT added yet.
+  # The app runs entirely on mock repositories so it builds & runs on web
+  # without firebase_options.dart / GoogleService-Info.plist / google-services.json.
+  # When we wire the real backend, add:
+  #   firebase_core, firebase_auth, cloud_firestore,
+  #   firebase_messaging, firebase_storage, firebase_analytics
+  # and flip AppConfig.useMockBackend to false.
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true
+
+  # Localization & other bundled assets
+  assets:
+    - assets/i18n/

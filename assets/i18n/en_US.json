@@ -1,0 +1,94 @@
+{
+  "app": {
+    "name": "Hang Out",
+    "tagline": "Meet people. Do things. No awkwardness."
+  },
+  "common": {
+    "join": "Join",
+    "joined": "Joined",
+    "cancel": "Cancel",
+    "create": "Create",
+    "save": "Save",
+    "loading": "Loading…",
+    "retry": "Retry",
+    "people": "people",
+    "person": "person",
+    "error": {
+      "generic": "Something went wrong. Please try again."
+    }
+  },
+  "nav": {
+    "profile": "Profile",
+    "friends": "Friends",
+    "create": "Create",
+    "myActivities": "My Activities"
+  },
+  "feed": {
+    "title": "Discover",
+    "empty": "No activities yet. Be the first to create one!",
+    "suggestedBanner": "People liked this / signed up for this",
+    "filters": {
+      "all": "All",
+      "drinks": "Drinks",
+      "tennis": "Tennis",
+      "coffee": "Coffee",
+      "food": "Food",
+      "music": "Music",
+      "sport": "Sport"
+    }
+  },
+  "activity": {
+    "enrolledCount": "{count} enrolled",
+    "startsIn": "Starts {when}",
+    "hostedBy": "Hosted by {name}",
+    "placeholder": {
+      "title": "What are you up to? (e.g. Beers after work)",
+      "description": "Describe the activity. e.g. Tennis match, 2 hours",
+      "place": "Where? Suggest a place",
+      "startDate": "When does it start?"
+    },
+    "label": {
+      "title": "Title",
+      "description": "Description",
+      "place": "Place suggestion",
+      "startDate": "Start date & time",
+      "coverImage": "Cover image"
+    },
+    "create": {
+      "title": "Create activity",
+      "submit": "Create activity",
+      "coverHint": "Add a cover photo so people notice your activity"
+    }
+  },
+  "myActivities": {
+    "title": "My Activities",
+    "empty": "You haven't joined any activities yet.",
+    "hosting": "Hosting",
+    "joinedSection": "Joined"
+  },
+  "friends": {
+    "title": "Friends",
+    "empty": "Add people you've hung out with to build your friends list.",
+    "add": "Add friend"
+  },
+  "profile": {
+    "title": "Profile",
+    "activitiesJoined": "Activities joined",
+    "activitiesHosted": "Activities hosted",
+    "friendsCount": "Friends"
+  },
+  "chat": {
+    "title": "Group chat",
+    "placeholder": "Message…",
+    "send": "Send",
+    "systemJoined": "{name} joined the activity",
+    "removeMember": "Remove from chat"
+  },
+  "notifications": {
+    "joinRequest": "{name} wants to join \"{activity}\"",
+    "accept": "Accept",
+    "deny": "Deny",
+    "reminderTitle": "Your activity starts in 2 hours",
+    "reminderBody": "\"{activity}\" is coming up. Get ready!"
+  }
+}

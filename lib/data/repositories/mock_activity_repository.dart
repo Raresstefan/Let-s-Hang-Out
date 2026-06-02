@@ -1,0 +1,133 @@
+import 'package:uuid/uuid.dart';
+
+import '../../domain/models/activity.dart';
+import '../../domain/models/activity_category.dart';
+import 'activity_repository.dart';
+
+/// In-memory implementation seeded with sample data so the app is usable and
+/// the feed looks alive without any backend.
+class MockActivityRepository implements ActivityRepository {
+  MockActivityRepository() {
+    _seed();
+  }
+
+  final _uuid = const Uuid();
+  final List<Activity> _activities = [];
+
+  /// Stand-in for the signed-in user in mock mode.
+  static const currentUserId = 'user-rares';
+
+  void _seed() {
+    final now = DateTime.now();
+    _activities.addAll([
+      Activity(
+        id: 'act-beers',
+        title: 'Beers after work 🍺',
+        description:
+            'Casual drinks downtown. Looking for a few people to unwind with.',
+        placeSuggestion: 'The Tap House, Main St.',
+        startAt: now.add(const Duration(hours: 6)),
+        hostId: 'user-mihai',
+        category: ActivityCategory.drinks,
+        coverImageUrl:
+            'https://images.unsplash.com/photo-1436076863939-06870fe779c2?w=800',
+        memberIds: ['user-mihai', 'user-ana'],
+        likeCount: 24,
+        isSuggested: true,
+      ),
+      Activity(
+        id: 'act-tennis',
+        title: 'Tennis match — 2 hours 🎾',
+        description: 'Looking for one player. Intermediate level. Bring rackets!',
+        placeSuggestion: 'City Sports Park, Court 3',
+        startAt: now.add(const Duration(days: 1, hours: 2)),
+        hostId: 'user-radu',
+        category: ActivityCategory.tennis,
+        coverImageUrl:
+            'https://images.unsplash.com/photo-1554068865-24cecd4e34b8?w=800',
+        memberIds: ['user-radu'],
+        likeCount: 8,
+      ),
+      Activity(
+        id: 'act-coffee',
+        title: 'Morning coffee & chat ☕',
+        description: 'Slow Saturday coffee, talk about books and travel.',
+        placeSuggestion: 'Blue Bottle, Old Town',
+        startAt: now.add(const Duration(days: 2, hours: 3)),
+        hostId: 'user-ana',
+        category: ActivityCategory.coffee,
+        coverImageUrl:
+            'https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?w=800',
+        memberIds: ['user-ana', 'user-mihai', 'user-radu'],
+        likeCount: 41,
+        isSuggested: true,
+      ),
+      Activity(
+        id: 'act-food',
+        title: 'Street food tour 🍔',
+        description: 'Hitting 4 food trucks. Come hungry.',
+        placeSuggestion: 'Riverside Market',
+        startAt: now.add(const Duration(days: 3)),
+        hostId: 'user-mihai',
+        category: ActivityCategory.food,
+        coverImageUrl:
+            'https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=800',
+        memberIds: ['user-mihai'],
+        likeCount: 15,
+      ),
+    ]);
+  }
+
+  @override
+  Future<List<Activity>> fetchActivities({ActivityCategory? category}) async {
+    await _latency();
+    final list = category == null
+        ? _activities
+        : _activities.where((a) => a.category == category).toList();
+    // Newest start first as a simple ordering.
+    final sorted = [...list]..sort((a, b) => a.startAt.compareTo(b.startAt));
+    return sorted;
+  }
+
+  @override
+  Future<List<Activity>> fetchMyActivities(String userId) async {
+    await _latency();
+    return _activities.where((a) => a.isMember(userId)).toList();
+  }
+
+  @override
+  Future<Activity> createActivity(Activity activity) async {
+    await _latency();
+    final created = Activity(
+      id: _uuid.v4(),
+      title: activity.title,
+      description: activity.description,
+      placeSuggestion: activity.placeSuggestion,
+      startAt: activity.startAt,
+      hostId: activity.hostId,
+      category: activity.category,
+      coverImageUrl: activity.coverImageUrl,
+      memberIds: [activity.hostId],
+    );
+    _activities.insert(0, created);
+    return created;
+  }
+
+  @override
+  Future<Activity> join(String activityId, String userId) async {
+    await _latency();
+    final idx = _activities.indexWhere((a) => a.id == activityId);
+    if (idx == -1) throw StateError('Activity not found: $activityId');
+    final activity = _activities[idx];
+    if (!activity.isMember(userId)) {
+      final updated =
+          activity.copyWith(memberIds: [...activity.memberIds, userId]);
+      _activities[idx] = updated;
+      return updated;
+    }
+    return activity;
+  }
+
+  Future<void> _latency() =>
+      Future<void>.delayed(const Duration(milliseconds: 250));
+}
