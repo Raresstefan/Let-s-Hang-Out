@@ -17,6 +17,10 @@ class MockActivityRepository implements ActivityRepository {
   /// Stand-in for the signed-in user in mock mode.
   static const currentUserId = 'user-rares';
 
+  /// Placeholder liker ids so a seeded count of [n] renders without real users.
+  static List<String> _seedLikers(int n) =>
+      List.generate(n, (i) => 'seed-user-$i');
+
   void _seed() {
     final now = DateTime.now();
     _activities.addAll([
@@ -32,7 +36,7 @@ class MockActivityRepository implements ActivityRepository {
         coverImageUrl:
             'https://images.unsplash.com/photo-1436076863939-06870fe779c2?w=800',
         memberIds: ['user-mihai', 'user-ana'],
-        likeCount: 24,
+        likedBy: _seedLikers(24),
         isSuggested: true,
       ),
       Activity(
@@ -46,7 +50,7 @@ class MockActivityRepository implements ActivityRepository {
         coverImageUrl:
             'https://images.unsplash.com/photo-1554068865-24cecd4e34b8?w=800',
         memberIds: ['user-radu'],
-        likeCount: 8,
+        likedBy: _seedLikers(8),
       ),
       Activity(
         id: 'act-coffee',
@@ -59,7 +63,7 @@ class MockActivityRepository implements ActivityRepository {
         coverImageUrl:
             'https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?w=800',
         memberIds: ['user-ana', 'user-mihai', 'user-radu'],
-        likeCount: 41,
+        likedBy: _seedLikers(41),
         isSuggested: true,
       ),
       Activity(
@@ -73,7 +77,7 @@ class MockActivityRepository implements ActivityRepository {
         coverImageUrl:
             'https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=800',
         memberIds: ['user-mihai'],
-        likeCount: 15,
+        likedBy: _seedLikers(15),
       ),
     ]);
   }
@@ -126,6 +130,20 @@ class MockActivityRepository implements ActivityRepository {
       return updated;
     }
     return activity;
+  }
+
+  @override
+  Future<Activity> toggleLike(String activityId, String userId) async {
+    await _latency();
+    final idx = _activities.indexWhere((a) => a.id == activityId);
+    if (idx == -1) throw StateError('Activity not found: $activityId');
+    final activity = _activities[idx];
+    final likedBy = activity.isLikedBy(userId)
+        ? activity.likedBy.where((id) => id != userId).toList()
+        : [...activity.likedBy, userId];
+    final updated = activity.copyWith(likedBy: likedBy);
+    _activities[idx] = updated;
+    return updated;
   }
 
   Future<void> _latency() =>

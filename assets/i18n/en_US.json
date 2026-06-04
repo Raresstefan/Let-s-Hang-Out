@@ -3,6 +3,12 @@
     "name": "Hang Out",
     "tagline": "Meet people. Do things. No awkwardness."
   },
+  "auth": {
+    "tagline": "Meet people. Do things. No awkwardness.",
+    "continueWithGoogle": "Continue with Google",
+    "signingIn": "Signing you in…",
+    "error": "Couldn't sign in. Please try again."
+  },
   "common": {
     "join": "Join",
     "joined": "Joined",
@@ -14,7 +20,10 @@
     "people": "people",
     "person": "person",
     "error": {
-      "generic": "Something went wrong. Please try again."
+      "generic": "Something went wrong. Please try again.",
+      "offline": "You're offline. Check your connection and try again.",
+      "likeFailed": "Couldn't update your like. Check your connection.",
+      "joinFailed": "Couldn't join. Check your connection and try again."
     }
   },
   "nav": {
@@ -43,6 +52,19 @@
     "enrolledCount": "{count} enrolled",
     "startsIn": "Starts {when}",
     "hostedBy": "Hosted by {name}",
+    "detail": {
+      "about": "About",
+      "noDescription": "No description provided",
+      "going": "Who's going",
+      "host": "Host",
+      "you": "You",
+      "whenTitle": "When",
+      "whereTitle": "Where",
+      "mapHint": "Map preview coming soon",
+      "openChat": "Open group chat",
+      "shareMessage": "Join me for \"{title}\" at {place} — starts {when}. Let's hang out!",
+      "goingCount": "{count} going"
+    },
     "placeholder": {
       "title": "e.g. Beers after work",
       "description": "Describe the activity. e.g. Tennis match, 2 hours",
@@ -80,6 +102,12 @@
     "empty": "Add people you've hung out with to build your friends list.",
     "add": "Add friend"
   },
+  "userProfile": {
+    "title": "Profile",
+    "about": "About",
+    "unknown": "Someone",
+    "empty": "This person hasn't added a bio or interests yet."
+  },
   "profile": {
     "title": "Profile",
     "handle": "@{handle}",
@@ -87,6 +115,15 @@
     "editProfile": "Edit profile",
     "interests": "Your interests",
     "addInterest": "Add",
+    "interestsAdd": "Add interests",
+    "interestsEdit": "Edit",
+    "interestsEmpty": "Tap to pick what you're into — it helps people find their people.",
+    "interestsTitle": "What are you into?",
+    "interestsSubtitle": "Pick a few — {count} selected",
+    "interestsYourOwn": "Your own",
+    "interestsOther": "Other",
+    "interestsOtherTitle": "Add your own",
+    "interestsOtherHint": "e.g. Salsa dancing, Chess, Surfing…",
     "avatarHint": "Tap or drop a photo to set your picture",
     "comingSoon": "Coming soon",
     "stats": {

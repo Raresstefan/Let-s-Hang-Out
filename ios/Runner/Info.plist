@@ -16,6 +16,20 @@
 	<string>hangout</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
+	<!-- Google Sign-In: iOS OAuth client + reversed-client-id callback scheme. -->
+	<key>GIDClientID</key>
+	<string>998116442751-7db6tci4ma2a52qj5tdl5p0a18rahs5a.apps.googleusercontent.com</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.998116442751-7db6tci4ma2a52qj5tdl5p0a18rahs5a</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleShortVersionString</key>
 	<string>$(FLUTTER_BUILD_NAME)</string>
 	<key>CFBundleSignature</key>

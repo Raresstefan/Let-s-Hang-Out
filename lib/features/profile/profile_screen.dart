@@ -4,8 +4,12 @@ import 'package:provider/provider.dart';
 import '../../core/analytics/analytics_service.dart';
 import '../../core/l10n/app_localizations.dart';
 import '../../core/theme/app_theme.dart';
-import '../../core/theme/category_style.dart';
-import '../../domain/models/activity_category.dart';
+import '../../data/auth/auth_service.dart';
+import '../../data/repositories/activity_repository.dart';
+import '../../data/repositories/user_repository.dart';
+import '../../domain/interests/interest_catalog.dart';
+import '../../domain/models/activity.dart';
+import '../../domain/models/app_user.dart';
 import 'widgets/avatar_drop_zone.dart';
 
 /// The user's profile: an editable identity (avatar / name / handle / bio), a
@@ -20,22 +24,136 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  // Local, in-memory profile state.
+  // Local, in-memory profile state (seeded from the signed-in account).
   String _name = 'Rares';
-  final String _handle = 'rares';
+  String _handle = 'rares';
   String _bio = '';
   String? _avatarUrl;
-  final Set<ActivityCategory> _interests = {
-    ActivityCategory.coffee,
-    ActivityCategory.tennis,
-  };
+  // Interest ids the user picked (catalog ids or custom free-text). Hydrated
+  // from the stored profile; empty until loaded.
+  final Set<String> _interests = {};
 
-  // Mock stats (would come from repositories once wired).
-  static const _joined = 3;
-  static const _hosted = 1;
+  // Live stats, derived from the activities the user is enrolled in. Hosted =
+  // activities they own; Joined = activities they're a member of but don't host.
+  // Friends has no backend yet, so it stays 0.
+  int _joined = 0;
+  int _hosted = 0;
   static const _friends = 0;
 
   AnalyticsService get _analytics => context.read<AnalyticsService>();
+
+  @override
+  void initState() {
+    super.initState();
+    // Seed identity from the signed-in user (Google name/avatar).
+    final auth = context.read<AuthService>();
+    final name = auth.displayName;
+    if (name != null && name.isNotEmpty) {
+      _name = name;
+      _handle = name.split(' ').first.toLowerCase();
+    }
+    _avatarUrl = auth.photoUrl;
+    _loadStats();
+    _loadProfile();
+  }
+
+  /// Hydrates the editable profile (bio + interests) from the stored `users`
+  /// doc so they survive restarts. Identity (name/avatar) is already seeded from
+  /// the auth session above; a stored displayName takes precedence if present.
+  Future<void> _loadProfile() async {
+    final uid = context.read<AuthService>().currentUserId;
+    if (uid == null) return;
+    try {
+      final profile = await context.read<UserRepository>().fetchProfile(uid);
+      if (!mounted || profile == null) return;
+      setState(() {
+        _bio = profile.bio;
+        if (profile.displayName.trim().isNotEmpty) {
+          _name = profile.displayName;
+          _handle = profile.displayName.split(' ').first.toLowerCase();
+        }
+        _interests
+          ..clear()
+          ..addAll(profile.interests);
+      });
+    } catch (_) {
+      // Offline / transient read — keep the auth-seeded defaults.
+    }
+  }
+
+  /// Persists the full editable profile (identity + bio + interests) to the
+  /// `users` doc. Best-effort: optimistic UI already updated; swallow errors.
+  Future<void> _persistProfile() async {
+    final uid = context.read<AuthService>().currentUserId;
+    if (uid == null) return;
+    try {
+      await context.read<UserRepository>().upsertProfile(AppUser(
+            id: uid,
+            displayName: _name,
+            avatarUrl: _avatarUrl,
+            bio: _bio,
+            interests: _interests.toList(),
+          ));
+    } catch (_) {
+      // Ignore — a later save / sign-in re-syncs.
+    }
+  }
+
+  /// Opens the Tinder-style interest picker, then persists the new selection.
+  Future<void> _editInterests() async {
+    _analytics.buttonClicked('edit_interests');
+    final result = await showModalBottomSheet<Set<String>>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _InterestsSheet(
+        initial: _interests,
+        analytics: _analytics,
+      ),
+    );
+    if (result == null) return;
+    setState(() {
+      _interests
+        ..clear()
+        ..addAll(result);
+    });
+    _persistProfile();
+    _analytics.actionSuccess('updateInterests');
+  }
+
+  /// Pulls the user's activities once and tallies hosted vs joined. Failures are
+  /// swallowed (the stat strip just shows the last known / zero counts) — this
+  /// is a glanceable summary, not a critical path.
+  Future<void> _loadStats() async {
+    final uid = context.read<AuthService>().currentUserId;
+    if (uid == null) return;
+    try {
+      final mine = await context.read<ActivityRepository>().fetchMyActivities(uid);
+      if (!mounted) return;
+      var hosted = 0;
+      var joined = 0;
+      for (final Activity a in mine) {
+        if (a.hostId == uid) {
+          hosted++;
+        } else {
+          joined++;
+        }
+      }
+      setState(() {
+        _hosted = hosted;
+        _joined = joined;
+      });
+    } catch (_) {
+      // Leave counts as-is; offline / transient read errors shouldn't block the
+      // profile from rendering.
+    }
+  }
+
+  Future<void> _logout() async {
+    _analytics.buttonClicked('settings_logout');
+    // Signing out flips AuthService.isSignedIn → the auth gate shows sign-in.
+    await context.read<AuthService>().signOut();
+  }
 
   void _comingSoon(String key) {
     _analytics.buttonClicked('settings_$key');
@@ -62,6 +180,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _name = result.name;
       _bio = result.bio;
     });
+    _persistProfile();
     _analytics.actionSuccess('updateProfile');
   }
 
@@ -145,28 +264,43 @@ class _ProfileScreenState extends State<ProfileScreen> {
           const SizedBox(height: 24),
 
           // ---- Interests ----
-          Text(l.tr('profile.interests'), style: theme.textTheme.titleMedium),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              for (final c in ActivityCategory.values)
-                _InterestChip(
-                  category: c,
-                  selected: _interests.contains(c),
-                  label: l.tr('feed.filters.${c.id}'),
-                  onTap: () {
-                    _analytics.buttonClicked('interest_${c.id}');
-                    setState(() {
-                      _interests.contains(c)
-                          ? _interests.remove(c)
-                          : _interests.add(c);
-                    });
-                  },
-                ),
+              Text(l.tr('profile.interests'),
+                  style: theme.textTheme.titleMedium),
+              TextButton.icon(
+                onPressed: _editInterests,
+                icon: Icon(
+                    _interests.isEmpty
+                        ? Icons.add_rounded
+                        : Icons.edit_outlined,
+                    size: 18),
+                label: Text(l.tr(_interests.isEmpty
+                    ? 'profile.interestsAdd'
+                    : 'profile.interestsEdit')),
+              ),
             ],
           ),
+          const SizedBox(height: 4),
+          if (_interests.isEmpty)
+            _InterestsEmptyPrompt(
+              text: l.tr('profile.interestsEmpty'),
+              onTap: _editInterests,
+            )
+          else
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final id in _interests)
+                  _InterestChip(
+                    interest: InterestCatalog.resolve(id),
+                    selected: true,
+                    onTap: _editInterests,
+                  ),
+              ],
+            ),
           const SizedBox(height: 28),
 
           // ---- Settings ----
@@ -198,7 +332,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   icon: Icons.logout_rounded,
                   label: l.tr('profile.settings.logout'),
                   danger: true,
-                  onTap: () => _comingSoon('logout'),
+                  onTap: _logout,
                 ),
               ],
             ),
@@ -259,20 +393,18 @@ class _StatDivider extends StatelessWidget {
 
 class _InterestChip extends StatelessWidget {
   const _InterestChip({
-    required this.category,
+    required this.interest,
     required this.selected,
-    required this.label,
     required this.onTap,
   });
 
-  final ActivityCategory category;
+  final Interest interest;
   final bool selected;
-  final String label;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final color = CategoryStyle.color(category);
+    const color = AppTheme.seed;
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
@@ -297,13 +429,279 @@ class _InterestChip extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(category.emoji, style: const TextStyle(fontSize: 16)),
+            Text(interest.emoji, style: const TextStyle(fontSize: 16)),
             const SizedBox(width: 6),
             Text(
-              label,
+              interest.label,
               style: TextStyle(
                 color: selected ? Colors.white : const Color(0xFF44403C),
                 fontWeight: FontWeight.w600,
+                fontSize: 13,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Inviting empty state for the interests section — a dashed-feel prompt card
+/// that opens the picker.
+class _InterestsEmptyPrompt extends StatelessWidget {
+  const _InterestsEmptyPrompt({required this.text, required this.onTap});
+
+  final String text;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+        decoration: BoxDecoration(
+          color: AppTheme.seed.withValues(alpha: 0.06),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppTheme.seed.withValues(alpha: 0.20)),
+        ),
+        child: Row(
+          children: [
+            const Text('✨', style: TextStyle(fontSize: 20)),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                text,
+                style: theme.textTheme.bodyMedium
+                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+              ),
+            ),
+            Icon(Icons.chevron_right_rounded,
+                color: theme.colorScheme.onSurfaceVariant),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Tinder-style interest picker: grouped selectable chips + an "Other" chip that
+/// lets the user add their own. Returns the new selection set on Save.
+class _InterestsSheet extends StatefulWidget {
+  const _InterestsSheet({required this.initial, required this.analytics});
+
+  final Set<String> initial;
+  final AnalyticsService analytics;
+
+  @override
+  State<_InterestsSheet> createState() => _InterestsSheetState();
+}
+
+class _InterestsSheetState extends State<_InterestsSheet> {
+  late final Set<String> _selected = {...widget.initial};
+
+  /// Custom (non-catalog) interests the user has selected — rendered as their
+  /// own removable group so they don't get lost.
+  List<String> get _customSelected =>
+      _selected.where((id) => !InterestCatalog.byId.containsKey(id)).toList();
+
+  void _toggle(String id) {
+    widget.analytics.buttonClicked('interest_$id');
+    setState(() {
+      _selected.contains(id) ? _selected.remove(id) : _selected.add(id);
+    });
+  }
+
+  Future<void> _addCustom() async {
+    widget.analytics.buttonClicked('interest_add_custom');
+    final l = AppLocalizations.of(context);
+    final controller = TextEditingController();
+    final text = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(l.tr('profile.interestsOtherTitle')),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          textCapitalization: TextCapitalization.words,
+          decoration:
+              InputDecoration(hintText: l.tr('profile.interestsOtherHint')),
+          onSubmitted: (v) => Navigator.of(ctx).pop(v),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: Text(l.tr('common.cancel')),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(controller.text),
+            child: Text(l.tr('profile.interestsAdd')),
+          ),
+        ],
+      ),
+    );
+    final cleaned = text?.trim() ?? '';
+    if (cleaned.isEmpty) return;
+    // Store custom interests as a normalized id so duplicates collapse.
+    final id = cleaned.toLowerCase().replaceAll(RegExp(r'\s+'), '_');
+    setState(() => _selected.add(id));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+    final custom = _customSelected;
+    return DraggableScrollableSheet(
+      initialChildSize: 0.85,
+      minChildSize: 0.5,
+      maxChildSize: 0.95,
+      expand: false,
+      builder: (context, scrollController) => Container(
+        decoration: const BoxDecoration(
+          color: Color(0xFFFBF7F4),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+        child: Column(
+          children: [
+            const SizedBox(height: 12),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.black26,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(l.tr('profile.interestsTitle'),
+                            style: theme.textTheme.titleLarge),
+                        Text(
+                          l.tr('profile.interestsSubtitle',
+                              {'count': _selected.length}),
+                          style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            Expanded(
+              child: ListView(
+                controller: scrollController,
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                children: [
+                  for (final group in InterestCatalog.groups) ...[
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8, bottom: 10),
+                      child: Text(group.title,
+                          style: theme.textTheme.titleSmall?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant)),
+                    ),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final i in group.interests)
+                          _InterestChip(
+                            interest: i,
+                            selected: _selected.contains(i.id),
+                            onTap: () => _toggle(i.id),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                  // Your own / custom interests + the add button.
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8, bottom: 10),
+                    child: Text(l.tr('profile.interestsYourOwn'),
+                        style: theme.textTheme.titleSmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant)),
+                  ),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final id in custom)
+                        _InterestChip(
+                          interest: InterestCatalog.resolve(id),
+                          selected: true,
+                          onTap: () => _toggle(id),
+                        ),
+                      _AddInterestChip(
+                        label: l.tr('profile.interestsOther'),
+                        onTap: _addCustom,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: () => Navigator.of(context).pop(_selected),
+                    child: Text(l.tr('common.save')),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The dashed "+ Other" chip that opens the add-your-own dialog.
+class _AddInterestChip extends StatelessWidget {
+  const _AddInterestChip({required this.label, required this.onTap});
+
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(
+            color: AppTheme.seed.withValues(alpha: 0.5),
+            width: 1.5,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.add_rounded, size: 18, color: AppTheme.seed),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: const TextStyle(
+                color: AppTheme.seed,
+                fontWeight: FontWeight.w700,
                 fontSize: 13,
               ),
             ),

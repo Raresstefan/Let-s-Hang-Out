@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/analytics/analytics_service.dart';
 import '../../core/l10n/app_localizations.dart';
+import '../activity_details/activity_details_screen.dart';
 import 'feed_controller.dart';
 import 'widgets/activity_card.dart';
 import 'widgets/emoji_filter_bar.dart';
@@ -16,6 +17,17 @@ class FeedScreen extends StatelessWidget {
     final l = AppLocalizations.of(context);
     final controller = context.watch<FeedController>();
     final analytics = context.read<AnalyticsService>();
+
+    // Surface a transient action error (e.g. an offline like) once, as a snackbar.
+    final actionError = controller.consumeActionError();
+    if (actionError != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(l.tr('common.error.$actionError'))),
+        );
+      });
+    }
 
     return Scaffold(
       appBar: AppBar(
@@ -80,6 +92,15 @@ class FeedScreen extends StatelessWidget {
           activity: activity,
           analytics: analytics,
           onJoin: () => controller.join(activity),
+          onLike: () => controller.toggleLike(activity),
+          onOpen: () {
+            analytics.buttonClicked('open_activity',
+                params: {'activity_id': activity.id});
+            Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) =>
+                  ActivityDetailsScreen(activityId: activity.id),
+            ));
+          },
         );
       },
     );

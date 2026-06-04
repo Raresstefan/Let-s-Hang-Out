@@ -8,7 +8,7 @@ class AppConfig {
   AppConfig._();
 
   /// When true, use in-memory mock data instead of Firebase.
-  static const bool useMockBackend = true;
+  static const bool useMockBackend = false;
 
   /// Default / starting locale. Only en_US is shipped for now.
   static const String defaultLocale = 'en_US';

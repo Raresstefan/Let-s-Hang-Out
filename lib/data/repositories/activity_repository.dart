@@ -14,4 +14,7 @@ abstract class ActivityRepository {
 
   /// Adds [userId] to the activity's members and returns the updated activity.
   Future<Activity> join(String activityId, String userId);
+
+  /// Toggles [userId]'s like on the activity and returns the updated activity.
+  Future<Activity> toggleLike(String activityId, String userId);
 }

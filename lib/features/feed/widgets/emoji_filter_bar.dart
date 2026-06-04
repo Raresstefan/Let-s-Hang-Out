@@ -26,6 +26,10 @@ class EmojiFilterBar extends StatelessWidget {
       height: 60,
       child: ListView(
         scrollDirection: Axis.horizontal,
+        // Always scrollable so the row drags on touch even when only a few
+        // pills are visible; the rest scroll into view.
+        physics: const AlwaysScrollableScrollPhysics(),
+        clipBehavior: Clip.none,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         children: [
           _Pill(

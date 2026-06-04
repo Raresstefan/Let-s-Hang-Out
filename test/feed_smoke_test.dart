@@ -2,19 +2,24 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hangout/app.dart';
 import 'package:hangout/core/analytics/analytics_service.dart';
+import 'package:hangout/data/auth/mock_auth_service.dart';
 import 'package:hangout/data/repositories/mock_activity_repository.dart';
+import 'package:hangout/data/repositories/mock_chat_repository.dart';
 import 'package:hangout/features/feed/widgets/activity_card.dart';
 import 'package:hangout/features/feed/widgets/emoji_filter_bar.dart';
+
+/// Builds the app fully wired with mock dependencies for widget tests.
+HangOutApp _mockApp() => HangOutApp(
+      authService: MockAuthService(),
+      repository: MockActivityRepository(),
+      chatRepository: MockChatRepository(),
+      analytics: ConsoleAnalyticsService(),
+    );
 
 void main() {
   testWidgets('app boots and renders the discover feed with activity cards',
       (tester) async {
-    await tester.pumpWidget(
-      HangOutApp(
-        repository: MockActivityRepository(),
-        analytics: ConsoleAnalyticsService(),
-      ),
-    );
+    await tester.pumpWidget(_mockApp());
 
     // Initial frame shows a loading spinner, then the seeded activities load.
     // NOTE: we use timed pumps rather than pumpAndSettle — the activity cards
@@ -37,12 +42,7 @@ void main() {
   });
 
   testWidgets('tapping an emoji filter narrows the feed', (tester) async {
-    await tester.pumpWidget(
-      HangOutApp(
-        repository: MockActivityRepository(),
-        analytics: ConsoleAnalyticsService(),
-      ),
-    );
+    await tester.pumpWidget(_mockApp());
     await tester.pumpAndSettle();
 
     // Find the tennis filter chip inside the emoji filter bar specifically

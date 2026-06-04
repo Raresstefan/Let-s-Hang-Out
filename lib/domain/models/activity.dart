@@ -12,7 +12,7 @@ class Activity {
     required this.category,
     this.coverImageUrl,
     this.memberIds = const [],
-    this.likeCount = 0,
+    this.likedBy = const [],
     this.isSuggested = false,
   });
 
@@ -28,17 +28,23 @@ class Activity {
   /// All enrolled users including the host.
   final List<String> memberIds;
 
-  /// Used by the recommendation/"people liked this" surface.
-  final int likeCount;
+  /// Users who liked this activity. The like count is derived from its length.
+  final List<String> likedBy;
+
   final bool isSuggested;
 
   int get enrolledCount => memberIds.length;
 
+  /// Number of likes — derived from [likedBy] (single source of truth).
+  int get likeCount => likedBy.length;
+
   bool isMember(String userId) => memberIds.contains(userId);
+
+  bool isLikedBy(String userId) => likedBy.contains(userId);
 
   Activity copyWith({
     List<String>? memberIds,
-    int? likeCount,
+    List<String>? likedBy,
   }) =>
       Activity(
         id: id,
@@ -50,7 +56,7 @@ class Activity {
         category: category,
         coverImageUrl: coverImageUrl,
         memberIds: memberIds ?? this.memberIds,
-        likeCount: likeCount ?? this.likeCount,
+        likedBy: likedBy ?? this.likedBy,
         isSuggested: isSuggested,
       );
 }

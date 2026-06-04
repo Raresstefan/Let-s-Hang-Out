@@ -23,23 +23,36 @@ class HomeShell extends StatefulWidget {
 class _HomeShellState extends State<HomeShell> {
   int _index = 0;
 
+  // Bumped each time the My Activities tab is opened so it remounts and
+  // re-queries Firestore (its data is loaded once per mount). Without this the
+  // IndexedStack keeps the page alive and it never reflects a fresh join.
+  int _myActivitiesEpoch = 0;
+
   // Order of the four tabs in the bottom bar (Discover lives behind Profile's
   // left side; we keep Feed as index 0 so the app opens on Discover).
-  late final List<Widget> _pages = const [
-    FeedScreen(),
-    FriendsScreen(),
-    MyActivitiesScreen(),
-    ProfileScreen(),
-  ];
+  List<Widget> get _pages => [
+        const FeedScreen(),
+        const FriendsScreen(),
+        MyActivitiesScreen(key: ValueKey(_myActivitiesEpoch)),
+        const ProfileScreen(),
+      ];
 
-  void _openCreate() {
+  Future<void> _openCreate() async {
     context.read<AnalyticsService>().buttonClicked('create_activity_fab');
-    Navigator.of(context).push(
+    final created = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
         fullscreenDialog: true,
         builder: (_) => const CreateActivityScreen(),
       ),
     );
+    if (!mounted || created != true) return;
+    // A new activity was created: jump to My Activities and remount it so it
+    // re-queries and shows the activity we now host. Bumping the epoch refreshes
+    // it even if we were already on that tab.
+    setState(() {
+      _index = 2;
+      _myActivitiesEpoch++;
+    });
   }
 
   @override
@@ -105,7 +118,11 @@ class _HomeShellState extends State<HomeShell> {
 
   void _select(int i) {
     context.read<AnalyticsService>().buttonClicked('nav_tab_$i');
-    setState(() => _index = i);
+    setState(() {
+      _index = i;
+      // Remount My Activities on each visit so it re-fetches (reflects joins).
+      if (i == 2) _myActivitiesEpoch++;
+    });
   }
 }
 

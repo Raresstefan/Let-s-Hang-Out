@@ -1,6 +1,7 @@
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:timeago/timeago.dart' as timeago;
 
 import '../../../core/analytics/analytics_service.dart';
@@ -8,7 +9,7 @@ import '../../../core/l10n/app_localizations.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/category_style.dart';
 import '../../../core/widgets/cover_image.dart';
-import '../../../data/repositories/mock_activity_repository.dart';
+import '../../../data/auth/auth_service.dart';
 import '../../../domain/models/activity.dart';
 
 /// A single activity rendered as an image-forward Card: full-bleed cover with a
@@ -20,11 +21,15 @@ class ActivityCard extends StatefulWidget {
     required this.activity,
     required this.analytics,
     required this.onJoin,
+    required this.onLike,
+    required this.onOpen,
   });
 
   final Activity activity;
   final AnalyticsService analytics;
   final VoidCallback onJoin;
+  final VoidCallback onLike;
+  final VoidCallback onOpen;
 
   @override
   State<ActivityCard> createState() => _ActivityCardState();
@@ -43,7 +48,9 @@ class _ActivityCardState extends State<ActivityCard> {
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
     final a = widget.activity;
-    final joined = a.isMember(MockActivityRepository.currentUserId);
+    final uid = context.watch<AuthService>().currentUserId;
+    final joined = uid != null && a.isMember(uid);
+    final liked = uid != null && a.isLikedBy(uid);
     final catColor = CategoryStyle.color(a.category);
 
     return Container(
@@ -57,8 +64,10 @@ class _ActivityCardState extends State<ActivityCard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // ---- Image-forward hero ----
-          SizedBox(
+          // ---- Image-forward hero (tap to open details) ----
+          GestureDetector(
+            onTap: widget.onOpen,
+            child: SizedBox(
             height: 230,
             child: Stack(
               fit: StackFit.expand,
@@ -98,11 +107,11 @@ class _ActivityCardState extends State<ActivityCard> {
                         color: catColor,
                       ),
                       const Spacer(),
-                      if (a.isSuggested && a.likeCount > 0)
-                        _GlassChip(
-                          icon: Icons.favorite,
-                          label: l.tr('feed.likedCount', {'count': a.likeCount}),
-                        ),
+                      _LikeChip(
+                        liked: liked,
+                        count: a.likeCount,
+                        onTap: widget.onLike,
+                      ),
                     ],
                   ),
                 ),
@@ -136,6 +145,7 @@ class _ActivityCardState extends State<ActivityCard> {
                 ),
               ],
             ),
+          ),
           ),
           // ---- Footer: Join CTA ----
           Padding(
@@ -277,12 +287,18 @@ class _JoinButton extends StatelessWidget {
   }
 }
 
-/// A frosted-glass chip (blurred translucent background, thin white border).
-class _GlassChip extends StatelessWidget {
-  const _GlassChip({this.icon, required this.label});
+/// Tappable frosted-glass like pill: heart + count. Filled coral heart when the
+/// current user has liked it, outlined white otherwise. Shown on every card.
+class _LikeChip extends StatelessWidget {
+  const _LikeChip({
+    required this.liked,
+    required this.count,
+    required this.onTap,
+  });
 
-  final IconData? icon;
-  final String label;
+  final bool liked;
+  final int count;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -290,26 +306,34 @@ class _GlassChip extends StatelessWidget {
       borderRadius: BorderRadius.circular(30),
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.18),
-            borderRadius: BorderRadius.circular(30),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.35)),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (icon != null) ...[
-                Icon(icon, size: 14, color: Colors.white),
-                const SizedBox(width: 5),
-              ],
-              Text(label,
-                  style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600)),
-            ],
+        child: Material(
+          color: Colors.white.withValues(alpha: 0.18),
+          child: InkWell(
+            onTap: onTap,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(30),
+                border:
+                    Border.all(color: Colors.white.withValues(alpha: 0.35)),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    liked ? Icons.favorite : Icons.favorite_border,
+                    size: 14,
+                    color: liked ? AppTheme.seed : Colors.white,
+                  ),
+                  const SizedBox(width: 5),
+                  Text('$count',
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600)),
+                ],
+              ),
+            ),
           ),
         ),
       ),

@@ -33,13 +33,14 @@ dependencies:
   desktop_drop: ^0.7.1
   google_fonts: ^8.1.0
 
-  # NOTE: Firebase packages are intentionally NOT added yet.
-  # The app runs entirely on mock repositories so it builds & runs on web
-  # without firebase_options.dart / GoogleService-Info.plist / google-services.json.
-  # When we wire the real backend, add:
-  #   firebase_core, firebase_auth, cloud_firestore,
-  #   firebase_messaging, firebase_storage, firebase_analytics
-  # and flip AppConfig.useMockBackend to false.
+  # Firebase backend (project: hang-out-129b5). Used when AppConfig.useMockBackend
+  # is false; the app still runs fully on mock repositories when it's true.
+  # (messaging/storage/analytics added in later passes.)
+  firebase_core: ^4.10.0
+  firebase_auth: ^6.5.2
+  cloud_firestore: ^6.5.0
+  google_sign_in: ^7.2.0
+  share_plus: ^12.0.2
 
 dev_dependencies:
   flutter_test:

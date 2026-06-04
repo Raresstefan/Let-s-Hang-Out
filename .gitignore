@@ -17,6 +17,7 @@ migrate_working_dir/
 *.ipr
 *.iws
 .idea/
+node_modules
 
 # The .vscode folder contains launch configuration and tasks you configure in
 # VS Code which you may wish to be included in version control, so this line
@@ -43,3 +44,16 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Firebase config (client config; gitignored by convention)
+android/app/google-services.json
+ios/Runner/GoogleService-Info.plist
+
+# Node artifacts — stray from an npm `firebase` install; the Flutter app uses
+# pub packages, not these. Kept locally but out of the repo.
+node_modules/
+package.json
+package-lock.json
+
+# Scratch/junk files
+ios/File.txt

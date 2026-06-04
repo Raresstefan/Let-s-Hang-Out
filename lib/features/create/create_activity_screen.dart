@@ -3,8 +3,8 @@ import 'package:provider/provider.dart';
 
 import '../../core/analytics/analytics_service.dart';
 import '../../core/l10n/app_localizations.dart';
+import '../../data/auth/auth_service.dart';
 import '../../data/repositories/activity_repository.dart';
-import '../../data/repositories/mock_activity_repository.dart';
 import '../../domain/models/activity.dart';
 import '../../domain/models/activity_category.dart';
 import '../feed/feed_controller.dart';
@@ -96,7 +96,7 @@ class _CreateActivityScreenState extends State<CreateActivityScreen> {
       description: _description.text.trim(),
       placeSuggestion: _place.text.trim(),
       startAt: _startAt!,
-      hostId: MockActivityRepository.currentUserId,
+      hostId: context.read<AuthService>().currentUserId!,
       category: _category,
       coverImageUrl: _coverDataUrl,
     );
@@ -108,7 +108,9 @@ class _CreateActivityScreenState extends State<CreateActivityScreen> {
 
     if (!mounted) return;
     setState(() => _submitting = false);
-    Navigator.of(context).maybePop();
+    // Pop with `true` so the home shell knows an activity was created and can
+    // refresh the My Activities tab (otherwise it stays stale on return).
+    Navigator.of(context).pop(true);
   }
 
   @override
