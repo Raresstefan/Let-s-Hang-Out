@@ -5,6 +5,7 @@ import '../../core/analytics/analytics_service.dart';
 import '../../core/l10n/app_localizations.dart';
 import '../../data/auth/auth_service.dart';
 import '../../data/repositories/activity_repository.dart';
+import '../../data/repositories/chat_repository.dart';
 import '../../domain/models/activity.dart';
 import '../../domain/models/activity_category.dart';
 import '../feed/feed_controller.dart';
@@ -13,7 +14,25 @@ import 'widgets/cover_drop_zone.dart';
 /// Host-facing form to create a new activity. Title, description, place and
 /// start date are all required (entered by the host, per the spec).
 class CreateActivityScreen extends StatefulWidget {
-  const CreateActivityScreen({super.key});
+  const CreateActivityScreen({
+    super.key,
+    this.circleId,
+    this.prefillMemberIds = const [],
+    this.prefillTitle,
+    this.prefillPlace,
+    this.prefillCategory,
+  });
+
+  /// When set, the created activity is linked to this circle and seeded with
+  /// [prefillMemberIds] (the circle's members) — the "Plan a hangout" flow.
+  final String? circleId;
+  final List<String> prefillMemberIds;
+
+  /// Optional prefills for the "Hang again" flow (reuse a past activity's
+  /// title / place / category). The start time is always re-picked.
+  final String? prefillTitle;
+  final String? prefillPlace;
+  final ActivityCategory? prefillCategory;
 
   @override
   State<CreateActivityScreen> createState() => _CreateActivityScreenState();
@@ -35,6 +54,15 @@ class _CreateActivityScreenState extends State<CreateActivityScreen> {
   bool _autovalidate = false; // turns on after the first submit attempt
 
   late final AnalyticsService _analytics = context.read<AnalyticsService>();
+
+  @override
+  void initState() {
+    super.initState();
+    // Seed from prefills (e.g. "Hang again" reusing a past activity).
+    if (widget.prefillTitle != null) _title.text = widget.prefillTitle!;
+    if (widget.prefillPlace != null) _place.text = widget.prefillPlace!;
+    if (widget.prefillCategory != null) _category = widget.prefillCategory!;
+  }
 
   @override
   void dispose() {
@@ -99,12 +127,34 @@ class _CreateActivityScreenState extends State<CreateActivityScreen> {
       hostId: context.read<AuthService>().currentUserId!,
       category: _category,
       coverImageUrl: _coverDataUrl,
+      // Circle hangout: link + seed members (the repo adds the host + dedupes).
+      circleId: widget.circleId,
+      memberIds: widget.prefillMemberIds,
     );
 
     final controller = context.read<FeedController>();
+    final auth = context.read<AuthService>();
+    final chats = context.read<ChatRepository>();
+    final uid = auth.currentUserId;
     await context.read<ActivityCreator>().create(draft);
     await controller.load();
     _analytics.actionSuccess('createActivity');
+
+    // Circle hangout: announce it in the circle's persistent chat so members
+    // see it (the chat lives at chats/{circleId}). Best-effort.
+    if (widget.circleId != null && uid != null) {
+      final planner = (auth.displayName?.trim().isNotEmpty ?? false)
+          ? auth.displayName!
+          : 'Someone';
+      try {
+        await chats.sendSystemMessage(
+          widget.circleId!,
+          actorId: uid,
+          text: l.tr('chat.systemPlanned',
+              {'name': planner, 'title': draft.title}),
+        );
+      } catch (_) {/* the hangout still exists; ignore */}
+    }
 
     if (!mounted) return;
     setState(() => _submitting = false);

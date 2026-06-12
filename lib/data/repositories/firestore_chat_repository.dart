@@ -49,6 +49,32 @@ class FirestoreChatRepository implements ChatRepository {
   }
 
   @override
+  Future<void> syncChatMembers(
+    String activityId, {
+    required String title,
+    required List<String> memberIds,
+  }) async {
+    final doc = _chatDoc(activityId);
+    final snap = await doc.get();
+    if (!snap.exists) {
+      // No chat yet — create it with the activity's current members.
+      await doc.set({
+        'activityId': activityId,
+        'title': title,
+        'memberIds': memberIds,
+        'createdAt': FieldValue.serverTimestamp(),
+        'lastMessageAt': null,
+        'lastMessageText': null,
+      });
+      return;
+    }
+    // Chat exists — union any members missing from its memberIds (heals drift).
+    await doc.update({
+      'memberIds': FieldValue.arrayUnion(memberIds),
+    });
+  }
+
+  @override
   Stream<List<Message>> messages(String activityId) {
     return _messagesCol(activityId)
         .orderBy('createdAt')

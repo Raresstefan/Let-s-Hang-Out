@@ -28,6 +28,8 @@ class FirestoreUserRepository implements UserRepository {
     // interests so logging in never wipes the user's edited profile.
     await _col.doc(id).set({
       'displayName': displayName,
+      // Lowercased name powers case-insensitive prefix search (friend finder).
+      'displayNameLower': displayName.toLowerCase(),
       'avatarUrl': avatarUrl,
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
@@ -37,6 +39,7 @@ class FirestoreUserRepository implements UserRepository {
   Future<void> upsertProfile(AppUser user) async {
     await _col.doc(user.id).set({
       'displayName': user.displayName,
+      'displayNameLower': user.displayName.toLowerCase(),
       'avatarUrl': user.avatarUrl,
       'bio': user.bio,
       'interests': user.interests,
@@ -78,6 +81,7 @@ class FirestoreUserRepository implements UserRepository {
       avatarUrl: data['avatarUrl'] as String?,
       bio: data['bio'] as String? ?? '',
       interests: List<String>.from(data['interests'] as List? ?? const []),
+      friendIds: List<String>.from(data['friendIds'] as List? ?? const []),
     );
   }
 }

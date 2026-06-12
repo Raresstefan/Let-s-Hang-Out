@@ -70,9 +70,9 @@ JSON i18n in `assets/i18n/en_US.json`; `AnalyticsService` event conventions.
 
 | ID | Feature | Primary loop | Status |
 |----|---------|--------------|--------|
-| A | **Circles** — recurring micro-communities | Community + all four | ⬜ Not started |
-| B | **Post-hang loop** — recap → add people → "Hang again?" | Growth + Retention | ⬜ Not started |
-| C | **Friends graph** + "your people are going" | Growth | ⬜ Not started |
+| A | **Circles** — recurring micro-communities | Community + all four | ✅ Shipped (manual-test pending) |
+| B | **Post-hang loop** — recap → add people → "Hang again?" | Growth + Retention | ✅ Shipped (manual-test pending) |
+| C | **Friends graph** + "your people are going" | Growth | ✅ Shipped (manual-test pending) |
 | D | **Notifications & reminders** (push + inbox) | Retention | ⬜ Not started |
 | E | **Interested / Save / Waitlist + capacity** | Liquidity + signal | ⬜ Not started |
 | F | **"Hang out now"** — spontaneity mode | Retention | ⬜ Not started |
@@ -178,4 +178,33 @@ Ordering balances impact, dependency, and the "fix the leaks first" principle.
     creation (host + 2nd joiner) and each later join (system `senderId` = actor's uid, `type: 'system'`
     — no rules change); chat screen renders a centered muted system pill.
   - `flutter analyze` clean. Manual-test pending on device.
-  - **Next up: C — Friends graph** (its own implementation plan).
+- _2026-06-04_ — **Feature C (Friends graph) shipped.**
+  - New: `FriendRequest`/`FriendshipStatus` model, `FriendRepository` (+ Firestore/Mock),
+    `FriendsController`. `friend_requests/{id}` collection; friendship = mutual `users.friendIds`
+    (arrayUnion on accept). Added `displayNameLower` for prefix search.
+  - UI: full Friends tab (search, incoming requests Accept/Deny, outgoing Pending+Cancel, friends list),
+    nav-icon **badge** for pending incoming, **Add/Requested/Accept/Friends** button on the read-only
+    user profile, **"N friends going"** badge on feed cards, real **Friends** stat on profile.
+  - `firestore.rules`: `friend_requests` block + field-scoped cross-user `friendIds` append (mirrors the
+    `likedBy` pattern). **Owner must publish updated rules in the Firebase console.**
+  - `flutter analyze` clean. Manual-test pending (two Google accounts).
+- _2026-06-04_ — **Feature A (Circles) shipped — the centerpiece.**
+  - New: `Circle`/`CircleInvite` models, `CircleRepository` (+ Firestore/Mock), `CirclesController`,
+    Circles tab, circle detail screen, create-circle sheet. `Activity.circleId` links spun-up hangouts.
+  - Persistent circle chat **reuses the generic chat layer** at `chats/{circleId}` (renamed
+    `ChatScreen.activityId` → `chatId`). **Invite + accept** membership mirrors friend requests.
+    "Plan a hangout" pre-fills Create Activity with circle members + circleId.
+  - Nav: added a **Circles tab** (5-item bar) with an invite **badge**; **Profile moved off the bar**
+    to an app-bar avatar (`ProfileAvatarButton`) on every main screen.
+  - `firestore.rules`: `circles` + `circle_invites` blocks (field-scoped `memberIds` self-append on
+    accept, mirroring friendIds). **Owner must republish rules in the console.**
+  - `flutter analyze` clean. Manual-test pending.
+- _2026-06-04_ — **Feature B (Post-hang loop) shipped.**
+  - `Activity.ratings` (uid→1–5) + `rateActivity` repo method. "Ended" = `startAt < now`.
+  - Recap **sheet** (rate stars + "people you met" with Add-friend reusing the friends flow + "Hang
+    again"); **card** in My Activities **Past** section (split into Upcoming/Past); dismissible **banner**
+    on the Discover feed for the latest un-recapped hang.
+  - Create Activity gained `prefillTitle/Place/Category` (+ `initState`) for "Hang again".
+  - `firestore.rules`: members may write the `ratings` field (field-scoped). **Owner republishes.**
+  - `flutter analyze` clean. Manual-test pending (age an activity's `startAt` to the past).
+  - **Next up: D — Notifications & reminders**, then E, G, H, I per the roadmap.

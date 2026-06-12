@@ -15,6 +15,7 @@
     "cancel": "Cancel",
     "create": "Create",
     "save": "Save",
+    "done": "Done",
     "loading": "Loading…",
     "retry": "Retry",
     "people": "people",
@@ -30,11 +31,14 @@
     "profile": "Profile",
     "friends": "Friends",
     "create": "Create",
-    "myActivities": "My Activities"
+    "myActivities": "My Activities",
+    "circles": "Circles"
   },
   "feed": {
     "title": "Discover",
     "subtitle": "Find something to do near you",
+    "searchHint": "Search activities, places…",
+    "noMatches": "No activities match your search.",
     "empty": "No activities yet. Be the first to create one!",
     "suggestedBanner": "People liked this",
     "likedCount": "{count} liked",
@@ -97,16 +101,68 @@
     "hosting": "Hosting",
     "joinedSection": "Joined"
   },
+  "postHang": {
+    "recapPrompt": "How was {title}?",
+    "rateLabel": "Rate your hangout",
+    "tapToRate": "Tap a star — it saves automatically",
+    "peopleYouMet": "People you met",
+    "hangAgain": "Hang again",
+    "dismiss": "Dismiss",
+    "thanks": "Thanks for the feedback!",
+    "upcoming": "Upcoming",
+    "past": "Past"
+  },
+  "circles": {
+    "title": "Circles",
+    "empty": "Create a circle to plan hangouts with the same crew, again and again.",
+    "create": "New circle",
+    "createTitle": "New circle",
+    "nameHint": "Circle name (e.g. Tuesday Tennis)",
+    "emoji": "Pick an emoji",
+    "selectMembers": "Invite friends",
+    "noFriendsToAdd": "Add some friends first — you can invite them to circles.",
+    "invitesTitle": "Circle invites",
+    "invitedYou": "invited you to {circle}",
+    "accept": "Accept",
+    "deny": "Deny",
+    "members": "Members",
+    "memberCount": "{count} members",
+    "openChat": "Open chat",
+    "planHangout": "Plan a hangout",
+    "invite": "Invite",
+    "invited": "Invited",
+    "pendingInvites": "Pending invites",
+    "createCta": "Create circle",
+    "hangoutPlanned": "Hangout planned — find it in My Activities and the circle chat."
+  },
   "friends": {
     "title": "Friends",
     "empty": "Add people you've hung out with to build your friends list.",
-    "add": "Add friend"
+    "add": "Add friend",
+    "searchHint": "Search people by name",
+    "requestsTitle": "Friend requests",
+    "pendingTitle": "Pending",
+    "friendsTitle": "Your friends",
+    "resultsTitle": "Results",
+    "accept": "Accept",
+    "deny": "Deny",
+    "cancel": "Cancel",
+    "requested": "Requested",
+    "alreadyFriends": "Friends",
+    "noResults": "No one found by that name.",
+    "requestSent": "Friend request sent",
+    "friendsGoing": "{count} going",
+    "wantsToBeFriends": "wants to be friends",
+    "unfriend": "Unfriend",
+    "unfriendConfirmTitle": "Remove friend?",
+    "unfriendConfirmBody": "Remove {name} from your friends?"
   },
   "userProfile": {
     "title": "Profile",
     "about": "About",
     "unknown": "Someone",
-    "empty": "This person hasn't added a bio or interests yet."
+    "empty": "This person hasn't added a bio or interests yet.",
+    "hostRating": "{rating} · {count} hangs hosted"
   },
   "profile": {
     "title": "Profile",
@@ -144,7 +200,9 @@
     "placeholder": "Message…",
     "send": "Send",
     "systemJoined": "{name} joined the activity",
-    "removeMember": "Remove from chat"
+    "systemPlanned": "{name} planned a hangout: {title}",
+    "removeMember": "Remove from chat",
+    "unavailable": "This chat isn't available. You may not be a member yet, or you're offline."
   },
   "notifications": {
     "joinRequest": "{name} wants to join \"{activity}\"",

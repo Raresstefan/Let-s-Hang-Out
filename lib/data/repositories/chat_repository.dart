@@ -16,6 +16,16 @@ abstract class ChatRepository {
   /// is already a member).
   Future<void> addMember(String activityId, String userId);
 
+  /// Ensures the chat exists and contains all of [memberIds] (creates it if
+  /// missing, else unions the members in). Self-heals drift between an
+  /// activity's members and its chat doc — e.g. hand-seeded activities or a
+  /// join whose chat sync was missed. Call before opening a chat.
+  Future<void> syncChatMembers(
+    String activityId, {
+    required String title,
+    required List<String> memberIds,
+  });
+
   /// Live stream of messages for a chat, oldest first.
   Stream<List<Message>> messages(String activityId);
 

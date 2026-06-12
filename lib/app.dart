@@ -9,11 +9,17 @@ import 'core/theme/app_theme.dart';
 import 'data/auth/auth_service.dart';
 import 'data/repositories/activity_repository.dart';
 import 'data/repositories/chat_repository.dart';
+import 'data/repositories/circle_repository.dart';
+import 'data/repositories/friend_repository.dart';
+import 'data/repositories/mock_circle_repository.dart';
+import 'data/repositories/mock_friend_repository.dart';
 import 'data/repositories/mock_user_repository.dart';
 import 'data/repositories/user_repository.dart';
 import 'features/auth/sign_in_screen.dart';
+import 'features/circles/circles_controller.dart';
 import 'features/create/create_activity_screen.dart';
 import 'features/feed/feed_controller.dart';
+import 'features/friends/friends_controller.dart';
 import 'features/home/home_shell.dart';
 
 /// Root widget. Wires the dependency graph via Provider so every screen reads
@@ -27,17 +33,29 @@ class HangOutApp extends StatelessWidget {
     required this.chatRepository,
     required this.analytics,
     UserRepository? userRepository,
-  }) : userRepository = userRepository ?? _fallbackUserRepository;
+    FriendRepository? friendRepository,
+    CircleRepository? circleRepository,
+  })  : userRepository = userRepository ?? _fallbackUserRepository,
+        friendRepository = friendRepository ?? _fallbackFriendRepository,
+        circleRepository = circleRepository ?? _fallbackCircleRepository(chatRepository);
 
   final AuthService authService;
   final ActivityRepository repository;
   final ChatRepository chatRepository;
   final UserRepository userRepository;
+  final FriendRepository friendRepository;
+  final CircleRepository circleRepository;
   final AnalyticsService analytics;
 
-  // Used when no user repository is supplied (e.g. widget tests) so the app
-  // still wires a UserRepository provider for the who's-going avatars.
-  static final UserRepository _fallbackUserRepository = MockUserRepository();
+  // Used when no repositories are supplied (e.g. widget tests) so the app still
+  // wires the providers the screens read. The fallback friend repo shares the
+  // fallback user store so friendIds + search stay consistent.
+  static final MockUserRepository _fallbackUserRepository =
+      MockUserRepository();
+  static final FriendRepository _fallbackFriendRepository =
+      MockFriendRepository(_fallbackUserRepository);
+  static CircleRepository _fallbackCircleRepository(ChatRepository chats) =>
+      MockCircleRepository(chats);
 
   @override
   Widget build(BuildContext context) {
@@ -48,6 +66,8 @@ class HangOutApp extends StatelessWidget {
         Provider<ActivityRepository>.value(value: repository),
         Provider<ChatRepository>.value(value: chatRepository),
         Provider<UserRepository>.value(value: userRepository),
+        Provider<FriendRepository>.value(value: friendRepository),
+        Provider<CircleRepository>.value(value: circleRepository),
         Provider<ActivityCreator>(create: (_) => ActivityCreator(repository)),
         ChangeNotifierProvider<FeedController>(
           create: (_) => FeedController(
@@ -56,6 +76,22 @@ class HangOutApp extends StatelessWidget {
             authService: authService,
             analytics: analytics,
             userRepository: userRepository,
+          ),
+        ),
+        ChangeNotifierProvider<FriendsController>(
+          create: (_) => FriendsController(
+            friendRepository: friendRepository,
+            userRepository: userRepository,
+            authService: authService,
+            analytics: analytics,
+          ),
+        ),
+        ChangeNotifierProvider<CirclesController>(
+          create: (_) => CirclesController(
+            circleRepository: circleRepository,
+            userRepository: userRepository,
+            authService: authService,
+            analytics: analytics,
           ),
         ),
       ],

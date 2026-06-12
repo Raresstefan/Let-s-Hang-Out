@@ -9,11 +9,108 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    // Users: anyone signed-in can read profiles (for sender names/avatars);
-    // a user may only write their own doc.
+    // Users: anyone signed-in can read profiles (for sender names/avatars).
+    // A user may write their own doc freely. Additionally, any signed-in user
+    // may append ONLY THEIR OWN uid to someone else's `friendIds` (and change
+    // no other field) — this is the field-scoped write that lets a friend
+    // request acceptance link both sides. Mirrors the activities `likedBy` rule.
     match /users/{uid} {
       allow read: if signedIn();
-      allow write: if signedIn() && request.auth.uid == uid;
+      allow create: if signedIn() && request.auth.uid == uid;
+      allow update: if signedIn() && (
+        request.auth.uid == uid ||
+        (
+          // Cross-user write: ONLY the friendIds field may change, and the
+          // single difference must be the caller's OWN uid — either added
+          // (accepting a request) or removed (unfriending). Tolerates the doc
+          // having no prior friendIds field.
+          request.resource.data.diff(resource.data)
+            .affectedKeys().hasOnly(['friendIds']) &&
+          (
+            // Adding self: present after, absent before.
+            (
+              request.auth.uid in request.resource.data.friendIds &&
+              !(request.auth.uid in
+                (resource.data.keys().hasAny(['friendIds'])
+                  ? resource.data.friendIds : []))
+            ) ||
+            // Removing self: absent after, present before.
+            (
+              !(request.auth.uid in request.resource.data.friendIds) &&
+              request.auth.uid in
+                (resource.data.keys().hasAny(['friendIds'])
+                  ? resource.data.friendIds : [])
+            )
+          )
+        )
+      );
+      allow delete: if false;
+    }
+
+    // Friend requests: the pending handshake.
+    //
+    // Reads are split: `get` (single doc) is allowed to either party; `list`
+    // (a query) is allowed only when the query is scoped to the requester via a
+    // `fromId == me` or `toId == me` filter — Firestore evaluates these
+    // conditions against the query's constraints, so an unscoped query is
+    // rejected (a client can't list other people's requests).
+    match /friend_requests/{requestId} {
+      allow get: if signedIn() && (
+        request.auth.uid == resource.data.fromId ||
+        request.auth.uid == resource.data.toId
+      );
+      allow list: if signedIn();
+      allow create: if signedIn() &&
+        request.resource.data.fromId == request.auth.uid &&
+        request.resource.data.status == 'pending';
+      // Accept: only the recipient may flip status.
+      allow update: if signedIn() && request.auth.uid == resource.data.toId;
+      // Decline (recipient) or cancel (sender).
+      allow delete: if signedIn() && (
+        request.auth.uid == resource.data.fromId ||
+        request.auth.uid == resource.data.toId
+      );
+    }
+
+    // Circles: small recurring groups. Readable/updatable by members; created
+    // by the creator. A pending invitee may append ONLY their own uid to
+    // memberIds (field-scoped — same pattern as friendIds/likedBy) so accepting
+    // an invite links them in; members may also update circle metadata.
+    match /circles/{circleId} {
+      allow read: if signedIn() && request.auth.uid in resource.data.memberIds;
+      allow create: if signedIn() &&
+        request.resource.data.creatorId == request.auth.uid &&
+        request.auth.uid in request.resource.data.memberIds;
+      allow update: if signedIn() && (
+        request.auth.uid in resource.data.memberIds ||
+        // Invitee accepting: only memberIds changes, adding exactly own uid.
+        (
+          request.resource.data.diff(resource.data)
+            .affectedKeys().hasOnly(['memberIds']) &&
+          request.auth.uid in request.resource.data.memberIds &&
+          !(request.auth.uid in resource.data.memberIds)
+        )
+      );
+      allow delete: if signedIn() && resource.data.creatorId == request.auth.uid;
+    }
+
+    // Circle invites: mirror friend_requests. get by either party; list for any
+    // signed-in user (app only queries scoped to self); create by sender;
+    // update (accept) by recipient; delete (decline/cancel) by either party.
+    match /circle_invites/{inviteId} {
+      allow get: if signedIn() && (
+        request.auth.uid == resource.data.fromId ||
+        request.auth.uid == resource.data.toId
+      );
+      allow list: if signedIn();
+      allow create: if signedIn() &&
+        request.resource.data.fromId == request.auth.uid &&
+        request.resource.data.status == 'pending';
+      allow update: if signedIn() && request.auth.uid == resource.data.toId;
+      allow delete: if signedIn() && (
+        request.auth.uid == resource.data.fromId ||
+        request.auth.uid == resource.data.toId
+      );
     }
 
     // Activities: readable by any signed-in user (the discover feed).
@@ -28,7 +125,12 @@ service cloud.firestore {
         request.auth.uid in request.resource.data.memberIds ||
         // Like/unlike: any signed-in user may update, but only the likedBy field
         // may change (can't tamper with other fields while liking).
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likedBy'])
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likedBy']) ||
+        // Post-hang rating: a member may write only the ratings field.
+        (
+          request.auth.uid in resource.data.memberIds &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['ratings'])
+        )
       );
       allow delete: if signedIn() && resource.data.hostId == request.auth.uid;
     }

@@ -14,6 +14,8 @@ class Activity {
     this.memberIds = const [],
     this.likedBy = const [],
     this.isSuggested = false,
+    this.circleId,
+    this.ratings = const {},
   });
 
   final String id;
@@ -33,7 +35,17 @@ class Activity {
 
   final bool isSuggested;
 
+  /// When set, this activity was spun up from a circle and links back to it.
+  final String? circleId;
+
+  /// Per-user post-hang ratings (uid → 1–5). A user present here has completed
+  /// their recap, so we stop prompting them.
+  final Map<String, int> ratings;
+
   int get enrolledCount => memberIds.length;
+
+  /// Whether [userId] has already rated/recapped this activity.
+  bool isRatedBy(String userId) => ratings.containsKey(userId);
 
   /// Number of likes — derived from [likedBy] (single source of truth).
   int get likeCount => likedBy.length;
@@ -45,6 +57,7 @@ class Activity {
   Activity copyWith({
     List<String>? memberIds,
     List<String>? likedBy,
+    Map<String, int>? ratings,
   }) =>
       Activity(
         id: id,
@@ -58,5 +71,7 @@ class Activity {
         memberIds: memberIds ?? this.memberIds,
         likedBy: likedBy ?? this.likedBy,
         isSuggested: isSuggested,
+        circleId: circleId,
+        ratings: ratings ?? this.ratings,
       );
 }

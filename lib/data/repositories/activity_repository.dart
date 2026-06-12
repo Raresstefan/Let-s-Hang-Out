@@ -1,5 +1,6 @@
 import '../../domain/models/activity.dart';
 import '../../domain/models/activity_category.dart';
+import '../../domain/models/host_stats.dart';
 
 /// Abstraction over activity persistence. The mock implementation backs the app
 /// today; a FirestoreActivityRepository will implement the same contract later.
@@ -17,4 +18,12 @@ abstract class ActivityRepository {
 
   /// Toggles [userId]'s like on the activity and returns the updated activity.
   Future<Activity> toggleLike(String activityId, String userId);
+
+  /// Records [userId]'s post-hang [rating] (1–5) for the activity and returns
+  /// the updated activity.
+  Future<Activity> rateActivity(String activityId, String userId, int rating);
+
+  /// Aggregate host reputation for [hostId] from the ratings on activities they
+  /// host (average + counts). Shown on profiles.
+  Future<HostStats> hostStats(String hostId);
 }

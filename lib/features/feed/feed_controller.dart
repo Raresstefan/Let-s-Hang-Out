@@ -61,17 +61,75 @@ class FeedController extends ChangeNotifier {
   ActivityCategory? _activeFilter;
   ActivityCategory? get activeFilter => _activeFilter;
 
+  /// Free-text discovery search (matches title / place / category).
+  String _query = '';
+  String get query => _query;
+
+  /// The feed after applying the active category filter + the search query —
+  /// both client-side over the loaded list (no extra fetch, no index).
+  List<Activity> get visibleActivities {
+    final q = _query.trim().toLowerCase();
+    return _activities.where((a) {
+      if (_activeFilter != null && a.category != _activeFilter) return false;
+      if (q.isEmpty) return true;
+      return a.title.toLowerCase().contains(q) ||
+          a.placeSuggestion.toLowerCase().contains(q) ||
+          a.category.id.toLowerCase().contains(q);
+    }).toList();
+  }
+
+  void setQuery(String value) {
+    _query = value;
+    notifyListeners();
+  }
+
   /// Suggested activities surface first ("People liked this / signed up").
   List<Activity> get suggested =>
       _activities.where((a) => a.isSuggested).toList();
+
+  /// The current user's friends, for the "N friends going" social-proof badge.
+  Set<String> _friendIds = const {};
+
+  /// How many of the current user's friends are enrolled in [activity]
+  /// (excluding the user themselves). Drives the feed-card badge.
+  int friendsGoing(Activity activity) {
+    if (_friendIds.isEmpty) return 0;
+    final me = _authService.currentUserId;
+    return activity.memberIds
+        .where((id) => id != me && _friendIds.contains(id))
+        .length;
+  }
+
+  /// The user's most recent ended-but-un-recapped activity, surfaced as a
+  /// post-hang recap banner on the feed. Null when there's nothing to recap or
+  /// it was rated this session (tracked in [_locallyRated]).
+  Activity? _recapCandidate;
+  Activity? get recapCandidate =>
+      (_recapCandidate != null && _locallyRated.contains(_recapCandidate!.id))
+          ? null
+          : _recapCandidate;
+
+  /// Activity ids rated this session — drop their recap banner immediately,
+  /// regardless of which screen the rating happened on. Shared via this
+  /// controller (Provider) so the My Activities recap also clears the banner.
+  final Set<String> _locallyRated = {};
+
+  /// Records that [activityId] was rated, clearing its recap banner instantly.
+  void markRated(String activityId) {
+    _locallyRated.add(activityId);
+    notifyListeners();
+  }
 
   Future<void> load() async {
     _loading = true;
     _error = null;
     notifyListeners();
     try {
-      _activities =
-          await _repository.fetchActivities(category: _activeFilter);
+      // Fetch all (public) activities once; category + search are applied
+      // client-side via [visibleActivities].
+      _activities = await _repository.fetchActivities();
+      await _loadFriendIds();
+      await _loadRecapCandidate();
     } catch (e) {
       _error = e;
     } finally {
@@ -80,19 +138,51 @@ class FeedController extends ChangeNotifier {
     }
   }
 
+  /// Loads the current user's friendIds once per feed load (best-effort).
+  Future<void> _loadFriendIds() async {
+    final uid = _authService.currentUserId;
+    if (uid == null) return;
+    try {
+      final me = await _userRepository.fetchProfile(uid);
+      _friendIds = me?.friendIds.toSet() ?? const {};
+    } catch (_) {
+      // Leave as-is; the badge just won't show.
+    }
+  }
+
+  /// Finds the most recent activity that has started and the user hasn't yet
+  /// rated — the post-hang recap prompt. Best-effort.
+  Future<void> _loadRecapCandidate() async {
+    final uid = _authService.currentUserId;
+    if (uid == null) return;
+    try {
+      final mine = await _repository.fetchMyActivities(uid);
+      final now = DateTime.now();
+      final ended = mine
+          .where((a) => a.startAt.isBefore(now) && !a.isRatedBy(uid))
+          .toList()
+        ..sort((a, b) => b.startAt.compareTo(a.startAt));
+      _recapCandidate = ended.isEmpty ? null : ended.first;
+    } catch (_) {
+      _recapCandidate = null;
+    }
+  }
+
   /// Toggle a filter. Tapping the active one again clears it (per the spec).
-  Future<void> toggleFilter(ActivityCategory category) async {
+  /// Filtering is client-side over the loaded list (see [visibleActivities]),
+  /// so no refetch is needed.
+  void toggleFilter(ActivityCategory category) {
     _analytics.buttonClicked('filter_${category.id}');
     _activeFilter = _activeFilter == category ? null : category;
-    await load();
+    notifyListeners();
   }
 
   /// Clear any active filter (the "All" pill).
-  Future<void> clearFilter() async {
+  void clearFilter() {
     if (_activeFilter == null) return;
     _analytics.buttonClicked('filter_all');
     _activeFilter = null;
-    await load();
+    notifyListeners();
   }
 
   Future<void> join(Activity activity) async {

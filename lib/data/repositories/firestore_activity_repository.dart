@@ -3,6 +3,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../domain/models/activity.dart';
 import '../../domain/models/activity_category.dart';
+import '../../domain/models/host_stats.dart';
 import 'activity_repository.dart';
 
 /// Firestore-backed activities. Mirrors the [Activity] model into
@@ -20,12 +21,17 @@ class FirestoreActivityRepository implements ActivityRepository {
 
   @override
   Future<List<Activity>> fetchActivities({ActivityCategory? category}) async {
-    Query<Map<String, dynamic>> query = _col.orderBy('startAt');
-    if (category != null) {
-      query = query.where('category', isEqualTo: category.id);
-    }
-    final snap = await query.get();
-    return snap.docs.map(_fromDoc).toList();
+    // Order by startAt only — no `where('category')` so we avoid a composite
+    // index (category + startAt). Category is filtered client-side below; the
+    // Discover feed is small enough that this is cheap.
+    final snap = await _col.orderBy('startAt').get();
+    // Also exclude circle hangouts (circleId set) — they're private to their
+    // circle. Filtered client-side so legacy docs (no circleId field) pass.
+    return snap.docs.map(_fromDoc).where((a) {
+      if (a.circleId != null) return false;
+      if (category != null && a.category != category) return false;
+      return true;
+    }).toList();
   }
 
   @override
@@ -40,6 +46,12 @@ class FirestoreActivityRepository implements ActivityRepository {
   @override
   Future<Activity> createActivity(Activity activity) async {
     final id = _uuid.v4();
+    // Seed members with the host plus any pre-filled members (e.g. a circle's
+    // members when spinning up a hangout), host first and de-duplicated.
+    final members = <String>{
+      activity.hostId,
+      ...activity.memberIds,
+    }.toList();
     final created = Activity(
       id: id,
       title: activity.title,
@@ -49,7 +61,8 @@ class FirestoreActivityRepository implements ActivityRepository {
       hostId: activity.hostId,
       category: activity.category,
       coverImageUrl: activity.coverImageUrl,
-      memberIds: [activity.hostId],
+      memberIds: members,
+      circleId: activity.circleId,
     );
     await _col.doc(id).set(_toMap(created));
     return created;
@@ -78,6 +91,38 @@ class FirestoreActivityRepository implements ActivityRepository {
     return _fromDoc(snap);
   }
 
+  @override
+  Future<Activity> rateActivity(
+      String activityId, String userId, int rating) async {
+    final doc = _col.doc(activityId);
+    // Field-merge a single map entry: ratings.{uid} = rating.
+    await doc.set({
+      'ratings': {userId: rating},
+    }, SetOptions(merge: true));
+    final snap = await doc.get();
+    return _fromDoc(snap);
+  }
+
+  @override
+  Future<HostStats> hostStats(String hostId) async {
+    if (hostId.isEmpty) return const HostStats();
+    final snap = await _col.where('hostId', isEqualTo: hostId).get();
+    final hosted = snap.docs.map(_fromDoc).toList();
+    var sum = 0;
+    var count = 0;
+    for (final a in hosted) {
+      for (final r in a.ratings.values) {
+        sum += r;
+        count++;
+      }
+    }
+    return HostStats(
+      averageRating: count == 0 ? 0 : sum / count,
+      ratingCount: count,
+      hostedCount: hosted.length,
+    );
+  }
+
   Map<String, dynamic> _toMap(Activity a) => {
         'title': a.title,
         'description': a.description,
@@ -89,6 +134,8 @@ class FirestoreActivityRepository implements ActivityRepository {
         'memberIds': a.memberIds,
         'likedBy': a.likedBy,
         'isSuggested': a.isSuggested,
+        'circleId': a.circleId,
+        'ratings': a.ratings,
       };
 
   Activity _fromDoc(DocumentSnapshot<Map<String, dynamic>> snap) {
@@ -105,7 +152,15 @@ class FirestoreActivityRepository implements ActivityRepository {
       memberIds: List<String>.from(data['memberIds'] as List? ?? const []),
       likedBy: _readLikedBy(data),
       isSuggested: data['isSuggested'] as bool? ?? false,
+      circleId: data['circleId'] as String?,
+      ratings: _readRatings(data),
     );
+  }
+
+  Map<String, int> _readRatings(Map<String, dynamic> data) {
+    final raw = data['ratings'] as Map?;
+    if (raw == null) return const {};
+    return raw.map((k, v) => MapEntry(k as String, (v as num).toInt()));
   }
 
   /// Reads the likers list, with back-compat for legacy docs that only have a

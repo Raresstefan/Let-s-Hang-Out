@@ -59,6 +59,34 @@ class MockChatRepository implements ChatRepository {
   }
 
   @override
+  Future<void> syncChatMembers(
+    String activityId, {
+    required String title,
+    required List<String> memberIds,
+  }) async {
+    final chat = _chats[activityId];
+    if (chat == null) {
+      _chats[activityId] = Chat(
+        id: activityId,
+        activityId: activityId,
+        title: title,
+        memberIds: List<String>.from(memberIds),
+      );
+      _messages.putIfAbsent(activityId, () => []);
+      return;
+    }
+    final merged = {...chat.memberIds, ...memberIds}.toList();
+    _chats[activityId] = Chat(
+      id: chat.id,
+      activityId: chat.activityId,
+      title: chat.title,
+      memberIds: merged,
+      lastMessageText: chat.lastMessageText,
+      lastMessageAt: chat.lastMessageAt,
+    );
+  }
+
+  @override
   Stream<List<Message>> messages(String activityId) {
     final controller = _controllerFor(activityId);
     // Seed the new listener with whatever's already there.

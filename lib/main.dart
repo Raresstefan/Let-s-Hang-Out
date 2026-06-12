@@ -10,11 +10,17 @@ import 'data/auth/firebase_auth_service.dart';
 import 'data/auth/mock_auth_service.dart';
 import 'data/repositories/activity_repository.dart';
 import 'data/repositories/chat_repository.dart';
+import 'data/repositories/circle_repository.dart';
 import 'data/repositories/firestore_activity_repository.dart';
 import 'data/repositories/firestore_chat_repository.dart';
+import 'data/repositories/firestore_circle_repository.dart';
+import 'data/repositories/firestore_friend_repository.dart';
 import 'data/repositories/firestore_user_repository.dart';
+import 'data/repositories/friend_repository.dart';
 import 'data/repositories/mock_activity_repository.dart';
 import 'data/repositories/mock_chat_repository.dart';
+import 'data/repositories/mock_circle_repository.dart';
+import 'data/repositories/mock_friend_repository.dart';
 import 'data/repositories/mock_user_repository.dart';
 import 'data/repositories/user_repository.dart';
 import 'firebase_options.dart';
@@ -31,12 +37,17 @@ Future<void> main() async {
   late final ActivityRepository repository;
   late final ChatRepository chatRepository;
   late final UserRepository userRepository;
+  late final FriendRepository friendRepository;
+  late final CircleRepository circleRepository;
 
   if (AppConfig.useMockBackend) {
-    userRepository = MockUserRepository();
+    final mockUsers = MockUserRepository();
+    userRepository = mockUsers;
+    friendRepository = MockFriendRepository(mockUsers);
     authService = MockAuthService();
     repository = MockActivityRepository();
     chatRepository = MockChatRepository();
+    circleRepository = MockCircleRepository(chatRepository);
   } else {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
@@ -48,11 +59,13 @@ Future<void> main() async {
       cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
     );
     userRepository = FirestoreUserRepository();
+    friendRepository = FirestoreFriendRepository();
     // Auth mirrors the signed-in profile into the users collection so other
     // members can see real names + photos.
     authService = FirebaseAuthService(userRepository: userRepository);
     repository = FirestoreActivityRepository();
     chatRepository = FirestoreChatRepository();
+    circleRepository = FirestoreCircleRepository(chatRepository);
   }
 
   runApp(HangOutApp(
@@ -60,6 +73,8 @@ Future<void> main() async {
     repository: repository,
     chatRepository: chatRepository,
     userRepository: userRepository,
+    friendRepository: friendRepository,
+    circleRepository: circleRepository,
     analytics: analytics,
   ));
 }

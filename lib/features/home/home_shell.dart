@@ -4,11 +4,13 @@ import 'package:provider/provider.dart';
 import '../../core/analytics/analytics_service.dart';
 import '../../core/l10n/app_localizations.dart';
 import '../../core/theme/app_theme.dart';
+import '../circles/circles_controller.dart';
+import '../circles/circles_screen.dart';
 import '../create/create_activity_screen.dart';
 import '../feed/feed_screen.dart';
+import '../friends/friends_controller.dart';
 import '../friends/friends_screen.dart';
 import '../my_activities/my_activities_screen.dart';
-import '../profile/profile_screen.dart';
 
 /// App scaffold with the bottom menu described in the spec:
 /// Profile · Friends · [ + ] (centre, most highlighted) · My Activities.
@@ -28,13 +30,14 @@ class _HomeShellState extends State<HomeShell> {
   // IndexedStack keeps the page alive and it never reflects a fresh join.
   int _myActivitiesEpoch = 0;
 
-  // Order of the four tabs in the bottom bar (Discover lives behind Profile's
-  // left side; we keep Feed as index 0 so the app opens on Discover).
+  // Tab order: Discover(0) · Friends(1) · Circles(2) · My Activities(3). The
+  // center Create button sits between Friends and Circles in the bar. Profile
+  // lives off the bar — reached via the avatar in each screen's app-bar.
   List<Widget> get _pages => [
         const FeedScreen(),
         const FriendsScreen(),
+        const CirclesScreen(),
         MyActivitiesScreen(key: ValueKey(_myActivitiesEpoch)),
-        const ProfileScreen(),
       ];
 
   Future<void> _openCreate() async {
@@ -46,11 +49,11 @@ class _HomeShellState extends State<HomeShell> {
       ),
     );
     if (!mounted || created != true) return;
-    // A new activity was created: jump to My Activities and remount it so it
-    // re-queries and shows the activity we now host. Bumping the epoch refreshes
-    // it even if we were already on that tab.
+    // A new activity was created: jump to My Activities (index 3) and remount it
+    // so it re-queries and shows the activity we now host. Bumping the epoch
+    // refreshes it even if we were already on that tab.
     setState(() {
-      _index = 2;
+      _index = 3;
       _myActivitiesEpoch++;
     });
   }
@@ -90,22 +93,24 @@ class _HomeShellState extends State<HomeShell> {
                 label: l.tr('nav.friends'),
                 selected: _index == 1,
                 onTap: () => _select(1),
+                badgeCount: context.watch<FriendsController>().incomingCount,
               ),
               _CreateButton(
                 label: l.tr('nav.create'),
                 onTap: _openCreate,
               ),
               _NavItem(
+                icon: Icons.groups_outlined,
+                selectedIcon: Icons.groups_rounded,
+                label: l.tr('nav.circles'),
+                selected: _index == 2,
+                onTap: () => _select(2),
+                badgeCount: context.watch<CirclesController>().incomingCount,
+              ),
+              _NavItem(
                 icon: Icons.event_available_outlined,
                 selectedIcon: Icons.event_available,
                 label: l.tr('nav.myActivities'),
-                selected: _index == 2,
-                onTap: () => _select(2),
-              ),
-              _NavItem(
-                icon: Icons.person_outline,
-                selectedIcon: Icons.person,
-                label: l.tr('nav.profile'),
                 selected: _index == 3,
                 onTap: () => _select(3),
               ),
@@ -120,8 +125,8 @@ class _HomeShellState extends State<HomeShell> {
     context.read<AnalyticsService>().buttonClicked('nav_tab_$i');
     setState(() {
       _index = i;
-      // Remount My Activities on each visit so it re-fetches (reflects joins).
-      if (i == 2) _myActivitiesEpoch++;
+      // Remount My Activities (index 3) on each visit so it re-fetches.
+      if (i == 3) _myActivitiesEpoch++;
     });
   }
 }
@@ -133,6 +138,7 @@ class _NavItem extends StatelessWidget {
     required this.label,
     required this.selected,
     required this.onTap,
+    this.badgeCount = 0,
   });
 
   final IconData icon;
@@ -140,6 +146,9 @@ class _NavItem extends StatelessWidget {
   final String label;
   final bool selected;
   final VoidCallback onTap;
+
+  /// When > 0, a count badge is drawn over the icon (e.g. pending requests).
+  final int badgeCount;
 
   @override
   Widget build(BuildContext context) {
@@ -155,18 +164,51 @@ class _NavItem extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Tonal pill behind the icon marks the active tab.
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 180),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                decoration: BoxDecoration(
-                  color: selected
-                      ? primary.withValues(alpha: 0.12)
-                      : Colors.transparent,
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Icon(selected ? selectedIcon : icon,
-                    color: color, size: 24),
+              // Tonal pill behind the icon marks the active tab; a count badge
+              // overlays it when badgeCount > 0.
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 180),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: selected
+                          ? primary.withValues(alpha: 0.12)
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Icon(selected ? selectedIcon : icon,
+                        color: color, size: 24),
+                  ),
+                  if (badgeCount > 0)
+                    Positioned(
+                      right: 4,
+                      top: -4,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 5, vertical: 1),
+                        constraints:
+                            const BoxConstraints(minWidth: 18, minHeight: 18),
+                        decoration: BoxDecoration(
+                          color: AppTheme.seed,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: Colors.white, width: 1.5),
+                        ),
+                        alignment: Alignment.center,
+                        child: Text(
+                          badgeCount > 9 ? '9+' : '$badgeCount',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            height: 1.1,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
               ),
               const SizedBox(height: 3),
               Text(label,

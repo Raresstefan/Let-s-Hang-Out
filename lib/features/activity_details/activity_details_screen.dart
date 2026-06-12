@@ -24,9 +24,18 @@ import '../feed/feed_controller.dart';
 /// gradient Join bar pinned to the bottom. Reads the live activity from
 /// [FeedController] so like/join changes reflect instantly.
 class ActivityDetailsScreen extends StatelessWidget {
-  const ActivityDetailsScreen({super.key, required this.activityId});
+  const ActivityDetailsScreen({
+    super.key,
+    required this.activityId,
+    this.initialActivity,
+  });
 
   final String activityId;
+
+  /// An activity passed in directly (from My Activities / the chat header),
+  /// used when it isn't in the live feed list — e.g. a joined, past, or
+  /// circle-private activity that Discover doesn't surface.
+  final Activity? initialActivity;
 
   @override
   Widget build(BuildContext context) {
@@ -45,11 +54,14 @@ class ActivityDetailsScreen extends StatelessWidget {
       });
     }
 
-    // Live copy from the controller; null if it was removed/filtered out.
-    final activity = controller.activities
+    // Prefer the live feed copy (keeps like/join reactive); fall back to the
+    // activity passed in (joined / past / circle-private ones aren't in the
+    // feed list).
+    final feedMatch = controller.activities
         .where((a) => a.id == activityId)
         .cast<Activity?>()
         .firstWhere((a) => a != null, orElse: () => null);
+    final activity = feedMatch ?? initialActivity;
 
     if (activity == null) {
       return Scaffold(
@@ -127,8 +139,8 @@ class ActivityDetailsScreen extends StatelessWidget {
                           params: {'activity_id': a.id},
                         );
                         Navigator.of(context).push(MaterialPageRoute(
-                          builder: (_) =>
-                              ChatScreen(activityId: a.id, title: a.title),
+                          builder: (_) => ChatScreen(
+                              chatId: a.id, title: a.title, activity: a),
                         ));
                       },
                     ),

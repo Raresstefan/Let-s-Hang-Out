@@ -23,6 +23,7 @@ class ActivityCard extends StatefulWidget {
     required this.onJoin,
     required this.onLike,
     required this.onOpen,
+    this.friendsGoing = 0,
   });
 
   final Activity activity;
@@ -30,6 +31,9 @@ class ActivityCard extends StatefulWidget {
   final VoidCallback onJoin;
   final VoidCallback onLike;
   final VoidCallback onOpen;
+
+  /// Number of the viewer's friends enrolled — shows a social-proof badge.
+  final int friendsGoing;
 
   @override
   State<ActivityCard> createState() => _ActivityCardState();
@@ -147,14 +151,58 @@ class _ActivityCardState extends State<ActivityCard> {
             ),
           ),
           ),
-          // ---- Footer: Join CTA ----
+          // ---- Footer: friends-going social proof + Join CTA ----
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
-            child: _JoinButton(
-              joined: joined,
-              onJoin: widget.onJoin,
-              joinLabel: l.tr('common.join'),
-              joinedLabel: l.tr('common.joined'),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (widget.friendsGoing > 0) ...[
+                  _FriendsGoingBadge(
+                    label: l.tr(
+                        'friends.friendsGoing', {'count': widget.friendsGoing}),
+                  ),
+                  const SizedBox(height: 10),
+                ],
+                _JoinButton(
+                  joined: joined,
+                  onJoin: widget.onJoin,
+                  joinLabel: l.tr('common.join'),
+                  joinedLabel: l.tr('common.joined'),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Social-proof pill: "N friends going". Tinted accent so it draws the eye.
+class _FriendsGoingBadge extends StatelessWidget {
+  const _FriendsGoingBadge({required this.label});
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: AppTheme.accent.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.group_rounded, size: 15, color: AppTheme.accent),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: const TextStyle(
+              color: AppTheme.accent,
+              fontWeight: FontWeight.w700,
+              fontSize: 12,
             ),
           ),
         ],

@@ -2,6 +2,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../domain/models/activity.dart';
 import '../../domain/models/activity_category.dart';
+import '../../domain/models/host_stats.dart';
 import 'activity_repository.dart';
 
 /// In-memory implementation seeded with sample data so the app is usable and
@@ -85,9 +86,11 @@ class MockActivityRepository implements ActivityRepository {
   @override
   Future<List<Activity>> fetchActivities({ActivityCategory? category}) async {
     await _latency();
+    // Circle hangouts (circleId set) are private — excluded from Discover.
+    final visible = _activities.where((a) => a.circleId == null);
     final list = category == null
-        ? _activities
-        : _activities.where((a) => a.category == category).toList();
+        ? visible.toList()
+        : visible.where((a) => a.category == category).toList();
     // Newest start first as a simple ordering.
     final sorted = [...list]..sort((a, b) => a.startAt.compareTo(b.startAt));
     return sorted;
@@ -102,6 +105,7 @@ class MockActivityRepository implements ActivityRepository {
   @override
   Future<Activity> createActivity(Activity activity) async {
     await _latency();
+    final members = <String>{activity.hostId, ...activity.memberIds}.toList();
     final created = Activity(
       id: _uuid.v4(),
       title: activity.title,
@@ -111,7 +115,8 @@ class MockActivityRepository implements ActivityRepository {
       hostId: activity.hostId,
       category: activity.category,
       coverImageUrl: activity.coverImageUrl,
-      memberIds: [activity.hostId],
+      memberIds: members,
+      circleId: activity.circleId,
     );
     _activities.insert(0, created);
     return created;
@@ -144,6 +149,39 @@ class MockActivityRepository implements ActivityRepository {
     final updated = activity.copyWith(likedBy: likedBy);
     _activities[idx] = updated;
     return updated;
+  }
+
+  @override
+  Future<Activity> rateActivity(
+      String activityId, String userId, int rating) async {
+    await _latency();
+    final idx = _activities.indexWhere((a) => a.id == activityId);
+    if (idx == -1) throw StateError('Activity not found: $activityId');
+    final activity = _activities[idx];
+    final updated = activity.copyWith(
+      ratings: {...activity.ratings, userId: rating},
+    );
+    _activities[idx] = updated;
+    return updated;
+  }
+
+  @override
+  Future<HostStats> hostStats(String hostId) async {
+    await _latency();
+    final hosted = _activities.where((a) => a.hostId == hostId).toList();
+    var sum = 0;
+    var count = 0;
+    for (final a in hosted) {
+      for (final r in a.ratings.values) {
+        sum += r;
+        count++;
+      }
+    }
+    return HostStats(
+      averageRating: count == 0 ? 0 : sum / count,
+      ratingCount: count,
+      hostedCount: hosted.length,
+    );
   }
 
   Future<void> _latency() =>

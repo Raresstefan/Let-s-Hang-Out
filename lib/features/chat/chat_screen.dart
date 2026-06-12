@@ -6,18 +6,28 @@ import '../../core/l10n/app_localizations.dart';
 import '../../core/theme/app_theme.dart';
 import '../../data/auth/auth_service.dart';
 import '../../data/repositories/chat_repository.dart';
+import '../../domain/models/activity.dart';
 import '../../domain/models/message.dart';
+import '../activity_details/activity_details_screen.dart';
 
 /// Minimal group chat: a live message list (mine vs theirs) + a send field.
+/// Generic over the chat context — [chatId] may be an activity id or a circle
+/// id (both live at `chats/{id}`).
 class ChatScreen extends StatefulWidget {
   const ChatScreen({
     super.key,
-    required this.activityId,
+    required this.chatId,
     required this.title,
+    this.activity,
   });
 
-  final String activityId;
+  final String chatId;
   final String title;
+
+  /// When set, this is an activity chat — the app-bar header becomes tappable
+  /// (group avatar + title) and opens the activity's details. Null for circle
+  /// chats (they have their own detail screen).
+  final Activity? activity;
 
   @override
   State<ChatScreen> createState() => _ChatScreenState();
@@ -43,9 +53,52 @@ class _ChatScreenState extends State<ChatScreen> {
     final uid = context.read<AuthService>().currentUserId;
     if (uid == null) return;
     _analytics.buttonClicked('send_message',
-        params: {'activity_id': widget.activityId});
+        params: {'chat_id': widget.chatId});
     _controller.clear();
-    await _chats.sendMessage(widget.activityId, senderId: uid, text: text);
+    await _chats.sendMessage(widget.chatId, senderId: uid, text: text);
+  }
+
+  void _openDetails() {
+    final a = widget.activity;
+    if (a == null) return;
+    _analytics.buttonClicked('open_activity_from_chat',
+        params: {'activity_id': a.id});
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) =>
+          ActivityDetailsScreen(activityId: a.id, initialActivity: a),
+    ));
+  }
+
+  /// App-bar title. For an activity chat it's a tappable row (group avatar +
+  /// title) opening the activity details, Messenger-style. Plain text otherwise.
+  Widget _buildTitle(BuildContext context, AppLocalizations l) {
+    final a = widget.activity;
+    if (a == null) return Text(widget.title);
+    return InkWell(
+      onTap: _openDetails,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: AppTheme.seed.withValues(alpha: 0.14),
+              shape: BoxShape.circle,
+            ),
+            child: Text(a.category.emoji, style: const TextStyle(fontSize: 17)),
+          ),
+          const SizedBox(width: 10),
+          Flexible(
+            child: Text(widget.title, overflow: TextOverflow.ellipsis),
+          ),
+          const SizedBox(width: 4),
+          Icon(Icons.chevron_right_rounded,
+              size: 20, color: Theme.of(context).colorScheme.onSurfaceVariant),
+        ],
+      ),
+    );
   }
 
   @override
@@ -54,13 +107,28 @@ class _ChatScreenState extends State<ChatScreen> {
     final uid = context.watch<AuthService>().currentUserId;
 
     return Scaffold(
-      appBar: AppBar(title: Text(widget.title)),
+      appBar: AppBar(title: _buildTitle(context, l)),
       body: Column(
         children: [
           Expanded(
             child: StreamBuilder<List<Message>>(
-              stream: _chats.messages(widget.activityId),
+              stream: _chats.messages(widget.chatId),
               builder: (context, snap) {
+                if (snap.hasError) {
+                  // e.g. permission-denied (not a chat member) or offline —
+                  // show a message instead of spinning forever.
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(32),
+                      child: Text(
+                        l.tr('chat.unavailable'),
+                        textAlign: TextAlign.center,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: Theme.of(context).colorScheme.onSurfaceVariant),
+                      ),
+                    ),
+                  );
+                }
                 if (!snap.hasData) {
                   return const Center(child: CircularProgressIndicator());
                 }

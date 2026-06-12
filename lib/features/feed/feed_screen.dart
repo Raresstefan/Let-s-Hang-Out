@@ -1,16 +1,47 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/analytics/analytics_service.dart';
 import '../../core/l10n/app_localizations.dart';
 import '../activity_details/activity_details_screen.dart';
+import '../post_hang/recap_banner.dart';
+import '../profile/profile_avatar_button.dart';
 import 'feed_controller.dart';
 import 'widgets/activity_card.dart';
 import 'widgets/emoji_filter_bar.dart';
 
 /// The Discover feed: emoji filter bar on top, scrollable list of activity cards.
-class FeedScreen extends StatelessWidget {
+class FeedScreen extends StatefulWidget {
   const FeedScreen({super.key});
+
+  @override
+  State<FeedScreen> createState() => _FeedScreenState();
+}
+
+class _FeedScreenState extends State<FeedScreen> {
+  // Recap banners dismissed this session (by activity id) so they don't reappear
+  // until the next launch (a rated activity drops out permanently anyway).
+  final Set<String> _dismissedRecaps = {};
+
+  final _searchController = TextEditingController();
+  Timer? _debounce;
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _onSearchChanged(String value) {
+    context.read<AnalyticsService>().inputTyping('search_activities');
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 300), () {
+      if (mounted) context.read<FeedController>().setQuery(value);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -46,16 +77,53 @@ class FeedScreen extends StatelessWidget {
             ),
           ],
         ),
+        actions: const [ProfileAvatarButton()],
       ),
       body: RefreshIndicator(
         onRefresh: controller.load,
         child: Column(
           children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+              child: TextField(
+                controller: _searchController,
+                onChanged: _onSearchChanged,
+                textInputAction: TextInputAction.search,
+                decoration: InputDecoration(
+                  hintText: l.tr('feed.searchHint'),
+                  prefixIcon: const Icon(Icons.search_rounded),
+                  suffixIcon: _searchController.text.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(Icons.close_rounded),
+                          onPressed: () {
+                            _searchController.clear();
+                            context.read<FeedController>().setQuery('');
+                            setState(() {});
+                          },
+                        )
+                      : null,
+                  filled: true,
+                  fillColor: Colors.white,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(24),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+              ),
+            ),
             EmojiFilterBar(
               active: controller.activeFilter,
               onSelected: controller.toggleFilter,
               onClear: controller.clearFilter,
             ),
+            if (controller.recapCandidate != null &&
+                !_dismissedRecaps.contains(controller.recapCandidate!.id))
+              RecapBanner(
+                activity: controller.recapCandidate!,
+                onDismiss: () => setState(() =>
+                    _dismissedRecaps.add(controller.recapCandidate!.id)),
+                onRated: controller.markRated,
+              ),
             Expanded(child: _buildBody(context, l, controller, analytics)),
           ],
         ),
@@ -84,13 +152,29 @@ class FeedScreen extends StatelessWidget {
     if (controller.activities.isEmpty) {
       return Center(child: Text(l.tr('feed.empty')));
     }
+    final visible = controller.visibleActivities;
+    if (visible.isEmpty) {
+      // The feed has activities, but none match the active filter / search.
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Text(
+            l.tr('feed.noMatches'),
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant),
+          ),
+        ),
+      );
+    }
     return ListView.builder(
-      itemCount: controller.activities.length,
+      itemCount: visible.length,
       itemBuilder: (context, i) {
-        final activity = controller.activities[i];
+        final activity = visible[i];
         return ActivityCard(
           activity: activity,
           analytics: analytics,
+          friendsGoing: controller.friendsGoing(activity),
           onJoin: () => controller.join(activity),
           onLike: () => controller.toggleLike(activity),
           onOpen: () {

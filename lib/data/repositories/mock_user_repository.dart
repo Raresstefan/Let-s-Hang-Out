@@ -11,6 +11,10 @@ class MockUserRepository implements UserRepository {
         const AppUser(id: MockAuthService.mockUserId, displayName: 'Rares'),
   };
 
+  /// Shared profile store, so [MockFriendRepository] can read/mutate the same
+  /// users (e.g. append to friendIds on accept, search by name).
+  Map<String, AppUser> get profiles => _profiles;
+
   @override
   Future<void> upsertIdentity(
     String id, {

@@ -10,6 +10,7 @@ import '../../data/repositories/user_repository.dart';
 import '../../domain/interests/interest_catalog.dart';
 import '../../domain/models/activity.dart';
 import '../../domain/models/app_user.dart';
+import '../../domain/models/host_stats.dart';
 import 'widgets/avatar_drop_zone.dart';
 
 /// The user's profile: an editable identity (avatar / name / handle / bio), a
@@ -38,7 +39,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   // Friends has no backend yet, so it stays 0.
   int _joined = 0;
   int _hosted = 0;
-  static const _friends = 0;
+  int _friends = 0;
+  HostStats _hostStats = const HostStats();
 
   AnalyticsService get _analytics => context.read<AnalyticsService>();
 
@@ -75,6 +77,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _interests
           ..clear()
           ..addAll(profile.interests);
+        _friends = profile.friendIds.length;
       });
     } catch (_) {
       // Offline / transient read — keep the auth-seeded defaults.
@@ -139,9 +142,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
           joined++;
         }
       }
+      final stats = await context.read<ActivityRepository>().hostStats(uid);
+      if (!mounted) return;
       setState(() {
         _hosted = hosted;
         _joined = joined;
+        _hostStats = stats;
       });
     } catch (_) {
       // Leave counts as-is; offline / transient read errors shouldn't block the
@@ -217,6 +223,37 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
             ),
           ),
+          if (_hostStats.hasRating) ...[
+            const SizedBox(height: 10),
+            Center(
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                decoration: BoxDecoration(
+                  color: AppTheme.seed.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.star_rounded,
+                        size: 18, color: AppTheme.seed),
+                    const SizedBox(width: 4),
+                    Text(
+                      l.tr('userProfile.hostRating', {
+                        'rating': _hostStats.averageRating.toStringAsFixed(1),
+                        'count': _hostStats.hostedCount,
+                      }),
+                      style: const TextStyle(
+                          color: AppTheme.seed,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
           const SizedBox(height: 12),
           Center(
             child: Text(
