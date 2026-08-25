@@ -63,17 +63,31 @@ class _FeedScreenState extends State<FeedScreen> {
     return Scaffold(
       appBar: AppBar(
         toolbarHeight: 72,
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        title: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(l.tr('feed.title'),
-                style: Theme.of(context).textTheme.headlineMedium),
-            Text(
-              l.tr('feed.subtitle'),
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Image.asset(
+                'assets/logo/app_icon.png',
+                width: 36,
+                height: 36,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(l.tr('feed.title'),
+                    style: Theme.of(context).textTheme.headlineMedium),
+                Text(
+                  l.tr('feed.subtitle'),
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                ),
+              ],
             ),
           ],
         ),

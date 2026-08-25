@@ -29,20 +29,54 @@ flutter doctor
 flutter pub get
 ```
 
-### Run
+### Run — step by step
 
-```bash
-# Web (fastest, no native toolchain needed)
-flutter run -d chrome
+1. **Check your toolchain is healthy:**
+   ```bash
+   flutter doctor
+   ```
+   Fix any `[✗]` lines for the platform you plan to target before continuing (a
+   `[!]` warning is usually fine to ignore).
 
-# iOS simulator (requires Xcode)
-flutter run -d ios
+2. **Install dependencies** (skip if you just did it above):
+   ```bash
+   flutter pub get
+   ```
 
-# Android emulator (requires Android SDK)
-flutter run -d android
-```
+3. **Pick a target device.** See what Flutter can already see:
+   ```bash
+   flutter devices
+   ```
+   - **Web** → Chrome is always listed, no extra setup needed.
+   - **iOS** → open the Simulator app once (`open -a Simulator`) so it shows up in the list.
+   - **Android** → an emulator must be *booted* first — see the dedicated
+     [Android emulator walkthrough](#running-the-android-emulator-from-the-command-line) below
+     if none is running yet.
 
-To list available devices: `flutter devices`.
+4. **Run the app**, targeting whichever device you chose:
+   ```bash
+   # Web (fastest, no native toolchain needed)
+   flutter run -d chrome
+
+   # iOS simulator (requires Xcode)
+   flutter run -d ios
+
+   # Android — use the exact device id from `flutter devices`, e.g. emulator-5554
+   flutter run -d emulator-5554
+   ```
+   The first run compiles native code and can take a few minutes (Android's
+   Gradle build in particular). Subsequent runs are much faster.
+
+5. **Use the running session.** While `flutter run` is attached in your terminal:
+   - `r` — hot reload (fast, keeps app state) — for widget/logic tweaks
+   - `R` — hot restart (re-runs `main()`) — needed after editing JSON/assets,
+     `main.dart`, providers, or app-root wiring
+   - `q` — quit and stop the app
+
+> Note: `flutter run` needs an interactive terminal attached — if it's launched
+> detached/backgrounded with no TTY, the debug/VM-service connection can drop
+> shortly after launch ("Lost connection to device"). Run it in a normal
+> foreground terminal you keep open.
 
 ### Running the Android emulator from the command line
 
@@ -102,6 +136,21 @@ Troubleshooting:
 - "Error opening emulator" → an instance of that AVD is already running (e.g. one
   Android Studio launched headless). Kill it first: `adb emu kill` or
   `pkill -f qemu-system`.
+
+### App icon / logo
+
+The launcher icon (Android/iOS/web) is generated from `assets/logo/app_icon.png` via
+[`flutter_launcher_icons`](https://pub.dev/packages/flutter_launcher_icons), configured in
+`pubspec.yaml`. `assets/logo/logo.png` (mark + wordmark) is the in-app logo shown in the
+Discover screen's app bar.
+
+To replace the logo:
+1. Drop the new square, icon-only artwork at `assets/logo/app_icon.png` (and the full
+   mark+wordmark version at `assets/logo/logo.png` if it changed too).
+2. Regenerate the launcher icons:
+   ```bash
+   dart run flutter_launcher_icons
+   ```
 
 ### Test & analyze
 ```bash
@@ -164,6 +213,8 @@ lib/
     ├── my_activities/, friends/, profile/
 
 assets/i18n/en_US.json              # all UI strings
+assets/logo/logo.png                # full logo (mark + wordmark), used for branding contexts
+assets/logo/app_icon.png            # square icon-only mark — source for the launcher icon
 test/feed_smoke_test.dart           # boots the app, asserts feed + filter work
 ```
 
