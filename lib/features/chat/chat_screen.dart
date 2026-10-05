@@ -6,9 +6,13 @@ import '../../core/l10n/app_localizations.dart';
 import '../../core/theme/app_theme.dart';
 import '../../data/auth/auth_service.dart';
 import '../../data/repositories/chat_repository.dart';
+import '../../data/repositories/user_repository.dart';
 import '../../domain/models/activity.dart';
 import '../../domain/models/message.dart';
+import '../../domain/models/report.dart';
 import '../activity_details/activity_details_screen.dart';
+import '../safety/safety_actions.dart';
+import '../safety/safety_controller.dart';
 
 /// Minimal group chat: a live message list (mine vs theirs) + a send field.
 /// Generic over the chat context — [chatId] may be an activity id or a circle
@@ -69,6 +73,51 @@ class _ChatScreenState extends State<ChatScreen> {
     ));
   }
 
+  /// Long-press on someone else's message: report it or block the sender.
+  Future<void> _onMessageLongPress(Message m) async {
+    final l = AppLocalizations.of(context);
+    final users = context.read<UserRepository>();
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.flag_outlined),
+              title: Text(l.tr('safety.reportMessage')),
+              onTap: () => Navigator.of(ctx).pop('report'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.block_rounded),
+              title: Text(l.tr('safety.block')),
+              onTap: () => Navigator.of(ctx).pop('block'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted || action == null) return;
+    if (action == 'report') {
+      await showReportSheet(
+        context,
+        target: ReportTarget.message,
+        targetId: m.id,
+        chatId: widget.chatId,
+        activityId: widget.activity?.id,
+      );
+      return;
+    }
+    String name = l.tr('chat.someone');
+    try {
+      final p = await users.fetchProfile(m.senderId);
+      if (p != null && p.displayName.trim().isNotEmpty) name = p.displayName;
+    } catch (_) {}
+    if (!mounted) return;
+    await confirmAndBlock(context, userId: m.senderId, name: name);
+  }
+
   /// App-bar title. For an activity chat it's a tappable row (group avatar +
   /// title) opening the activity details, Messenger-style. Plain text otherwise.
   Widget _buildTitle(BuildContext context, AppLocalizations l) {
@@ -105,6 +154,7 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
     final uid = context.watch<AuthService>().currentUserId;
+    final safety = context.watch<SafetyController>();
 
     return Scaffold(
       appBar: AppBar(title: _buildTitle(context, l)),
@@ -159,8 +209,19 @@ class _ChatScreenState extends State<ChatScreen> {
                   itemCount: messages.length,
                   itemBuilder: (context, i) {
                     final m = messages[i];
-                    if (m.isSystem) return _SystemLine(text: m.text);
-                    return _Bubble(message: m, mine: m.senderId == uid);
+                    if (m.isSystem) {
+                      return _SystemLine(text: _systemText(l, m));
+                    }
+                    final mine = m.senderId == uid;
+                    if (!mine && safety.isBlocked(m.senderId)) {
+                      return _SystemLine(text: l.tr('safety.hiddenMessage'));
+                    }
+                    final bubble = _Bubble(message: m, mine: mine);
+                    if (mine) return bubble;
+                    return GestureDetector(
+                      onLongPress: () => _onMessageLongPress(m),
+                      child: bubble,
+                    );
                   },
                 );
               },
@@ -175,6 +236,27 @@ class _ChatScreenState extends State<ChatScreen> {
         ],
       ),
     );
+  }
+}
+
+/// Renders a system line from its structured event (legacy lines carry
+/// pre-rendered [Message.text]).
+String _systemText(AppLocalizations l, Message m) {
+  final name = (m.subjectName?.trim().isNotEmpty ?? false)
+      ? m.subjectName!.trim()
+      : l.tr('chat.someone');
+  switch (m.systemEvent) {
+    case SystemEvent.joined:
+      return l.tr('chat.systemJoined', {'name': name});
+    case SystemEvent.planned:
+      return l.tr('chat.systemPlanned',
+          {'name': name, 'title': m.subjectTitle ?? ''});
+    case SystemEvent.hostLeft:
+      return l.tr('chat.systemHostLeft', {'name': name});
+    case SystemEvent.creatorLeft:
+      return l.tr('chat.systemCreatorLeft', {'name': name});
+    case null:
+      return m.text;
   }
 }
 

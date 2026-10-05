@@ -25,4 +25,22 @@ abstract class AuthService extends ChangeNotifier {
 
   /// Signs out of both Google and Firebase.
   Future<void> signOut();
+
+  /// Permanently deletes the signed-in user's account. Callers must delete any
+  /// owned data (e.g. the Firestore profile doc) beforehand — this only
+  /// removes the auth identity itself, which then flips [isSignedIn] to false.
+  ///
+  /// Firebase may reject this with [AccountDeletionRequiresRecentLogin] if the
+  /// session is too old for a sensitive operation. Callers should sign the
+  /// user out and ask them to sign back in and retry — a fresh session then
+  /// deletes immediately, with no re-auth prompt mid-flow.
+  Future<void> deleteAccount();
+}
+
+/// Thrown by [AuthService.deleteAccount] when Firebase requires a fresher
+/// sign-in before allowing this sensitive operation. The account is
+/// untouched; the caller should sign the user out so their next sign-in
+/// establishes a fresh session to retry with.
+class AccountDeletionRequiresRecentLogin implements Exception {
+  const AccountDeletionRequiresRecentLogin();
 }

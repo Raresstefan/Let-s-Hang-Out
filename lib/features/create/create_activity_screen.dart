@@ -3,12 +3,18 @@ import 'package:provider/provider.dart';
 
 import '../../core/analytics/analytics_service.dart';
 import '../../core/l10n/app_localizations.dart';
+import '../../core/moderation/content_filter.dart';
+import '../../core/widgets/image_pick.dart';
 import '../../data/auth/auth_service.dart';
-import '../../data/repositories/activity_repository.dart';
 import '../../data/repositories/chat_repository.dart';
+import '../../data/repositories/user_repository.dart';
+import '../../data/storage/activity_cover_storage.dart';
 import '../../domain/models/activity.dart';
 import '../../domain/models/activity_category.dart';
+import '../../domain/models/message.dart';
+import '../categories/activity_category_picker.dart';
 import '../feed/feed_controller.dart';
+import 'activity_creator.dart';
 import 'widgets/cover_drop_zone.dart';
 
 /// Host-facing form to create a new activity. Title, description, place and
@@ -44,8 +50,7 @@ class _CreateActivityScreenState extends State<CreateActivityScreen> {
   final _description = TextEditingController();
   final _place = TextEditingController();
 
-  /// Cover image as a data URL produced by the drop zone (null = none).
-  String? _coverDataUrl;
+  PickedImage? _coverImage;
 
   DateTime? _startAt;
   String? _startError; // inline validation message for the date picker
@@ -94,6 +99,23 @@ class _CreateActivityScreenState extends State<CreateActivityScreen> {
     });
   }
 
+  void _selectCategory(ActivityCategory category) {
+    _analytics.buttonClicked(
+      'select_activity_category',
+      params: {'category_id': category.id},
+    );
+    setState(() => _category = category);
+  }
+
+  Future<void> _showCategoryPicker() async {
+    _analytics.buttonClicked('open_activity_category_picker');
+    final selected = await showActivityCategoryPicker(
+      context,
+      selected: _category,
+    );
+    if (selected != null && mounted) _selectCategory(selected);
+  }
+
   /// Validates the start date and stores an inline message if invalid.
   /// Returns true when the date is valid.
   bool _validateStart(AppLocalizations l) {
@@ -126,7 +148,6 @@ class _CreateActivityScreenState extends State<CreateActivityScreen> {
       startAt: _startAt!,
       hostId: context.read<AuthService>().currentUserId!,
       category: _category,
-      coverImageUrl: _coverDataUrl,
       // Circle hangout: link + seed members (the repo adds the host + dedupes).
       circleId: widget.circleId,
       memberIds: widget.prefillMemberIds,
@@ -135,23 +156,61 @@ class _CreateActivityScreenState extends State<CreateActivityScreen> {
     final controller = context.read<FeedController>();
     final auth = context.read<AuthService>();
     final chats = context.read<ChatRepository>();
+    final users = context.read<UserRepository>();
     final uid = auth.currentUserId;
-    await context.read<ActivityCreator>().create(draft);
-    await controller.load();
-    _analytics.actionSuccess('createActivity');
+    final Activity created;
+    try {
+      created = await context.read<ActivityCreator>().create(
+        draft,
+        coverBytes: _coverImage?.bytes,
+      );
+      await controller.load();
+      if (_coverImage != null) {
+        _analytics.actionSuccess('uploadActivityCover');
+      }
+      _analytics.actionSuccess('createActivity');
+    } on ActivityCoverUploadException catch (error, stackTrace) {
+      FlutterError.reportError(
+        FlutterErrorDetails(exception: error, stack: stackTrace),
+      );
+      if (!mounted) return;
+      setState(() => _submitting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(l.tr('activity.create.coverUploadFailed')),
+          action: SnackBarAction(
+            label: l.tr('activity.create.coverRemove'),
+            onPressed: () => setState(() => _coverImage = null),
+          ),
+        ),
+      );
+      return;
+    } catch (error, stackTrace) {
+      FlutterError.reportError(
+        FlutterErrorDetails(exception: error, stack: stackTrace),
+      );
+      if (!mounted) return;
+      setState(() => _submitting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(l.tr('activity.create.failed'))),
+      );
+      return;
+    }
 
     // Circle hangout: announce it in the circle's persistent chat so members
     // see it (the chat lives at chats/{circleId}). Best-effort.
+    // The rules verify the name/title against the stored profile/activity.
     if (widget.circleId != null && uid != null) {
-      final planner = (auth.displayName?.trim().isNotEmpty ?? false)
-          ? auth.displayName!
-          : 'Someone';
       try {
+        final profile = await users.fetchProfile(uid);
         await chats.sendSystemMessage(
           widget.circleId!,
           actorId: uid,
-          text: l.tr('chat.systemPlanned',
-              {'name': planner, 'title': draft.title}),
+          event: SystemEvent.planned,
+          subjectId: uid,
+          subjectName: profile?.displayName ?? '',
+          title: created.title,
+          activityId: created.id,
         );
       } catch (_) {/* the hangout still exists; ignore */}
     }
@@ -189,8 +248,12 @@ class _CreateActivityScreenState extends State<CreateActivityScreen> {
               inputName: 'activity_title',
               validator: (v) => (v?.trim().isEmpty ?? true)
                   ? l.tr('activity.validation.titleRequired')
+                  : ContentFilter.hasBlocked(v!)
+                  ? l.tr('moderation.blocked')
                   : null,
             ),
+            const SizedBox(height: 16),
+            _categorySelector(l),
             const SizedBox(height: 16),
             // Description is optional — a missing description is a valid case.
             _field(
@@ -200,6 +263,9 @@ class _CreateActivityScreenState extends State<CreateActivityScreen> {
               inputName: 'activity_description',
               maxLines: 3,
               optional: true,
+              validator: (v) => ContentFilter.hasBlocked(v ?? '')
+                  ? l.tr('moderation.blocked')
+                  : null,
             ),
             const SizedBox(height: 16),
             _field(
@@ -209,6 +275,8 @@ class _CreateActivityScreenState extends State<CreateActivityScreen> {
               inputName: 'activity_place',
               validator: (v) => (v?.trim().isEmpty ?? true)
                   ? l.tr('activity.validation.placeRequired')
+                  : ContentFilter.hasBlocked(v!)
+                  ? l.tr('moderation.blocked')
                   : null,
             ),
             const SizedBox(height: 16),
@@ -219,11 +287,17 @@ class _CreateActivityScreenState extends State<CreateActivityScreen> {
             ),
             const SizedBox(height: 6),
             CoverDropZone(
-              hint: l.tr('activity.create.coverHint'),
-              onChanged: (dataUrl) {
-                // Fire the typing/interaction event once, like other inputs.
-                if (dataUrl != null) _analytics.inputTyping('activity_cover');
-                setState(() => _coverDataUrl = dataUrl);
+              category: _category,
+              onChanged: (image) {
+                final replacing = _coverImage != null && image != null;
+                _analytics.buttonClicked(
+                  image == null
+                      ? 'remove_activity_cover'
+                      : replacing
+                      ? 'replace_activity_cover'
+                      : 'add_activity_cover',
+                );
+                setState(() => _coverImage = image);
               },
             ),
             const SizedBox(height: 16),
@@ -256,17 +330,6 @@ class _CreateActivityScreenState extends State<CreateActivityScreen> {
                   ),
                 ),
               ),
-            const SizedBox(height: 16),
-            Wrap(
-              spacing: 8,
-              children: ActivityCategory.values.map((c) {
-                return ChoiceChip(
-                  label: Text('${c.emoji} ${c.id}'),
-                  selected: _category == c,
-                  onSelected: (_) => setState(() => _category = c),
-                );
-              }).toList(),
-            ),
             const SizedBox(height: 24),
             FilledButton(
               onPressed: _submitting ? null : _submit,
@@ -280,6 +343,43 @@ class _CreateActivityScreenState extends State<CreateActivityScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _categorySelector(AppLocalizations l) {
+    final selectedIsFeatured = _category.isFeatured;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          l.tr('activity.label.category'),
+          style: Theme.of(context).textTheme.labelLarge,
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final category in ActivityCategory.featured)
+              ChoiceChip(
+                label: Text('${category.emoji} ${category.label}'),
+                selected: _category == category,
+                onSelected: (_) => _selectCategory(category),
+              ),
+            if (!selectedIsFeatured)
+              ChoiceChip(
+                label: Text('${_category.emoji} ${_category.label}'),
+                selected: true,
+                onSelected: (_) => _showCategoryPicker(),
+              ),
+            ActionChip(
+              avatar: const Icon(Icons.grid_view_rounded, size: 18),
+              label: Text(l.tr('activity.categoryPicker.more')),
+              onPressed: _showCategoryPicker,
+            ),
+          ],
+        ),
+      ],
     );
   }
 
@@ -304,7 +404,7 @@ class _CreateActivityScreenState extends State<CreateActivityScreen> {
         TextFormField(
           controller: controller,
           maxLines: maxLines,
-          // Fires `Hang:${input_name}:Typing` once per field.
+          // Fires `input_started` once per field.
           onChanged: (_) => _analytics.inputTyping(inputName),
           decoration: InputDecoration(hintText: hint),
           validator: validator,
@@ -348,12 +448,4 @@ class _LabelRow extends StatelessWidget {
       ],
     );
   }
-}
-
-/// Thin wrapper around the repository's create call, provided via Provider so
-/// the screen doesn't reach into the repository directly.
-class ActivityCreator {
-  ActivityCreator(this._repository);
-  final ActivityRepository _repository;
-  Future<void> create(Activity draft) => _repository.createActivity(draft);
 }

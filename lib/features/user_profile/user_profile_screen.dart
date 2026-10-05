@@ -11,7 +11,10 @@ import '../../domain/interests/interest_catalog.dart';
 import '../../domain/models/app_user.dart';
 import '../../domain/models/friend_request.dart';
 import '../../domain/models/host_stats.dart';
+import '../../domain/models/report.dart';
 import '../friends/friends_controller.dart';
+import '../safety/safety_actions.dart';
+import '../safety/safety_controller.dart';
 
 /// Read-only view of *another* user's profile — opened by tapping their avatar
 /// in an activity's who's-going row. Deliberately separate from the editable
@@ -60,7 +63,9 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     _isSelf = context.read<AuthService>().currentUserId == widget.userId;
     _load();
     _loadHostStats();
-    if (!_isSelf) _loadFriendStatus();
+    // Friend status is loaded from _load() once the fresh fetch confirms the
+    // profile actually exists — a deleted user has no friend relationship
+    // worth showing a button for.
   }
 
   Future<void> _loadHostStats() async {
@@ -80,11 +85,18 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         if (fetched != null) _profile = fetched;
         _loading = false;
       });
+      if (fetched != null && !_isSelf) _loadFriendStatus();
     } catch (_) {
       if (!mounted) return;
       setState(() => _loading = false);
     }
   }
+
+  /// A confirmed-missing profile (load finished, nothing came back, and we
+  /// weren't handed an [initialProfile] either) means this uid's account was
+  /// deleted — there's no one to friend or unfriend.
+  bool get _isDeletedUser =>
+      !_loading && _profile == null && widget.initialProfile == null;
 
   Future<void> _loadFriendStatus() async {
     try {
@@ -205,14 +217,37 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     final theme = Theme.of(context);
     final p = _profile;
 
-    final name = (p != null && p.displayName.trim().isNotEmpty)
-        ? p.displayName
-        : l.tr('userProfile.unknown');
+    final name = _isDeletedUser
+        ? l.tr('userProfile.deletedUser')
+        : (p != null && p.displayName.trim().isNotEmpty)
+            ? p.displayName
+            : l.tr('userProfile.unknown');
     final handle = name.split(' ').first.toLowerCase();
     final hasPhoto = p?.avatarUrl != null && p!.avatarUrl!.isNotEmpty;
+    final blocked = context.watch<SafetyController>().isBlocked(widget.userId);
 
     return Scaffold(
-      appBar: AppBar(title: Text(l.tr('userProfile.title'))),
+      appBar: AppBar(
+        title: Text(l.tr('userProfile.title')),
+        actions: [
+          if (!_isSelf && !_isDeletedUser)
+            PopupMenuButton<String>(
+              onSelected: (v) => _onMenu(v, name),
+              itemBuilder: (_) => [
+                PopupMenuItem(
+                  value: 'report',
+                  child: Text(l.tr('safety.reportUser', {'name': name})),
+                ),
+                PopupMenuItem(
+                  value: blocked ? 'unblock' : 'block',
+                  child: Text(blocked
+                      ? l.tr('safety.unblock')
+                      : l.tr('safety.blockUser', {'name': name})),
+                ),
+              ],
+            ),
+        ],
+      ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
         children: [
@@ -304,7 +339,10 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                     const Icon(Icons.star_rounded,
                         size: 16, color: AppTheme.accent),
                     const SizedBox(width: 4),
-                    Text(l.tr('activity.detail.host'),
+                    Text(
+                        l.tr(_isDeletedUser
+                            ? 'activity.detail.formerHost'
+                            : 'activity.detail.host'),
                         style: const TextStyle(
                             color: AppTheme.accent,
                             fontWeight: FontWeight.w700,
@@ -315,8 +353,20 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
             ),
           ],
 
+          if (blocked) ...[
+            const SizedBox(height: 18),
+            Center(
+              child: Text(l.tr('safety.blockedBanner'),
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant)),
+            ),
+          ],
+
           // ---- Friendship action ----
-          if (!_isSelf && _friendStatus != null) ...[
+          if (!_isSelf &&
+              !_isDeletedUser &&
+              !blocked &&
+              _friendStatus != null) ...[
             const SizedBox(height: 18),
             Center(child: _buildFriendButton(l)),
           ],
@@ -360,7 +410,9 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
               padding: const EdgeInsets.only(top: 32),
               child: Center(
                 child: Text(
-                  l.tr('userProfile.empty'),
+                  l.tr(_isDeletedUser
+                      ? 'userProfile.deletedUserBody'
+                      : 'userProfile.empty'),
                   textAlign: TextAlign.center,
                   style: theme.textTheme.bodyMedium
                       ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
@@ -370,6 +422,21 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> _onMenu(String action, String name) async {
+    switch (action) {
+      case 'report':
+        await showReportSheet(context,
+            target: ReportTarget.user, targetId: widget.userId);
+      case 'block':
+        final ok = await confirmAndBlock(context,
+            userId: widget.userId, name: name);
+        if (ok && mounted) await _loadFriendStatus();
+      case 'unblock':
+        await unblockUser(context, userId: widget.userId, name: name);
+        if (mounted) await _loadFriendStatus();
+    }
   }
 
   String _initial(String name) {

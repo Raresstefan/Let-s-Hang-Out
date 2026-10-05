@@ -9,7 +9,7 @@ import 'chat_repository.dart';
 ///     messages/{messageId}                     (subcollection, by createdAt)
 class FirestoreChatRepository implements ChatRepository {
   FirestoreChatRepository([FirebaseFirestore? db])
-      : _db = db ?? FirebaseFirestore.instance;
+    : _db = db ?? FirebaseFirestore.instance;
 
   final FirebaseFirestore _db;
 
@@ -20,14 +20,14 @@ class FirestoreChatRepository implements ChatRepository {
       _chatDoc(activityId).collection('messages');
 
   @override
-  Future<void> ensureChat(
+  Future<bool> ensureChat(
     String activityId, {
     required String title,
     required List<String> memberIds,
   }) async {
     final doc = _chatDoc(activityId);
     final snap = await doc.get();
-    if (snap.exists) return; // idempotent
+    if (snap.exists) return false; // idempotent
     await doc.set({
       'activityId': activityId,
       'title': title,
@@ -36,6 +36,7 @@ class FirestoreChatRepository implements ChatRepository {
       'lastMessageAt': null,
       'lastMessageText': null,
     });
+    return true;
   }
 
   @override
@@ -69,9 +70,7 @@ class FirestoreChatRepository implements ChatRepository {
       return;
     }
     // Chat exists — union any members missing from its memberIds (heals drift).
-    await doc.update({
-      'memberIds': FieldValue.arrayUnion(memberIds),
-    });
+    await doc.update({'memberIds': FieldValue.arrayUnion(memberIds)});
   }
 
   @override
@@ -95,27 +94,34 @@ class FirestoreChatRepository implements ChatRepository {
       'createdAt': now,
       'type': 'user',
     });
-    await _chatDoc(activityId).update({
-      'lastMessageText': text,
-      'lastMessageAt': now,
-    });
+    await _chatDoc(
+      activityId,
+    ).update({'lastMessageText': text, 'lastMessageAt': now});
   }
 
   @override
   Future<void> sendSystemMessage(
-    String activityId, {
+    String chatId, {
     required String actorId,
-    required String text,
+    required SystemEvent event,
+    required String subjectId,
+    required String subjectName,
+    String? title,
+    String? activityId,
   }) async {
-    // senderId is the acting user's uid so the messages create rule passes
-    // (membership + senderId == auth.uid); type 'system' drives rendering.
-    // Deliberately does NOT bump lastMessageText/At — system lines shouldn't
-    // hijack the chat-list preview.
-    await _messagesCol(activityId).add({
+    // Structured line: the rules verify senderId == caller, the event, and that
+    // `name` matches the subject's profile — so it can't be forged. Rendering
+    // builds the text from these fields. Deliberately does NOT bump
+    // lastMessageText/At — system lines shouldn't hijack the chat-list preview.
+    await _messagesCol(chatId).add({
       'senderId': actorId,
-      'text': text,
       'createdAt': FieldValue.serverTimestamp(),
       'type': 'system',
+      'event': event.id,
+      'subjectId': subjectId,
+      'name': subjectName,
+      if (title != null) 'title': title,
+      if (activityId != null) 'activityId': activityId,
     });
   }
 
@@ -124,6 +130,16 @@ class FirestoreChatRepository implements ChatRepository {
     final snap = await _chatDoc(activityId).get();
     if (!snap.exists) return null;
     return _chatFromDoc(snap);
+  }
+
+  @override
+  Future<void> removeMember(String activityId, String userId) async {
+    final doc = _chatDoc(activityId);
+    final snap = await doc.get();
+    if (!snap.exists) return;
+    await doc.update({
+      'memberIds': FieldValue.arrayRemove([userId]),
+    });
   }
 
   Chat _chatFromDoc(DocumentSnapshot<Map<String, dynamic>> snap) {
@@ -147,6 +163,9 @@ class FirestoreChatRepository implements ChatRepository {
       // serverTimestamp is briefly null locally before the server resolves it.
       createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
       isSystem: data['type'] == 'system',
+      systemEvent: SystemEvent.fromId(data['event'] as String?),
+      subjectName: data['name'] as String?,
+      subjectTitle: data['title'] as String?,
     );
   }
 }

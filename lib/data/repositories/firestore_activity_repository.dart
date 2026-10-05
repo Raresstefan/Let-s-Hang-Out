@@ -11,7 +11,7 @@ import 'activity_repository.dart';
 /// by hand in the Firestore console so the feed isn't empty.
 class FirestoreActivityRepository implements ActivityRepository {
   FirestoreActivityRepository([FirebaseFirestore? db])
-      : _db = db ?? FirebaseFirestore.instance;
+    : _db = db ?? FirebaseFirestore.instance;
 
   final FirebaseFirestore _db;
   final _uuid = const Uuid();
@@ -21,14 +21,17 @@ class FirestoreActivityRepository implements ActivityRepository {
 
   @override
   Future<List<Activity>> fetchActivities({ActivityCategory? category}) async {
-    // Order by startAt only — no `where('category')` so we avoid a composite
-    // index (category + startAt). Category is filtered client-side below; the
-    // Discover feed is small enough that this is cheap.
-    final snap = await _col.orderBy('startAt').get();
-    // Also exclude circle hangouts (circleId set) — they're private to their
-    // circle. Filtered client-side so legacy docs (no circleId field) pass.
+    // Public activities only: circle hangouts are private, and the security
+    // rules reject any query that could return them, so `circleId == null`
+    // must be part of the query (needs the circleId+startAt composite index —
+    // see firestore.indexes.json). Docs missing the field entirely don't match;
+    // the app always writes it. Category is filtered client-side to avoid
+    // another composite index.
+    final snap = await _col
+        .where('circleId', isNull: true)
+        .orderBy('startAt')
+        .get();
     return snap.docs.map(_fromDoc).where((a) {
-      if (a.circleId != null) return false;
       if (category != null && a.category != category) return false;
       return true;
     }).toList();
@@ -36,8 +39,7 @@ class FirestoreActivityRepository implements ActivityRepository {
 
   @override
   Future<List<Activity>> fetchMyActivities(String userId) async {
-    final snap =
-        await _col.where('memberIds', arrayContains: userId).get();
+    final snap = await _col.where('memberIds', arrayContains: userId).get();
     final list = snap.docs.map(_fromDoc).toList()
       ..sort((a, b) => a.startAt.compareTo(b.startAt));
     return list;
@@ -48,10 +50,7 @@ class FirestoreActivityRepository implements ActivityRepository {
     final id = _uuid.v4();
     // Seed members with the host plus any pre-filled members (e.g. a circle's
     // members when spinning up a hangout), host first and de-duplicated.
-    final members = <String>{
-      activity.hostId,
-      ...activity.memberIds,
-    }.toList();
+    final members = <String>{activity.hostId, ...activity.memberIds}.toList();
     final created = Activity(
       id: id,
       title: activity.title,
@@ -93,7 +92,10 @@ class FirestoreActivityRepository implements ActivityRepository {
 
   @override
   Future<Activity> rateActivity(
-      String activityId, String userId, int rating) async {
+    String activityId,
+    String userId,
+    int rating,
+  ) async {
     final doc = _col.doc(activityId);
     // Field-merge a single map entry: ratings.{uid} = rating.
     await doc.set({
@@ -106,7 +108,12 @@ class FirestoreActivityRepository implements ActivityRepository {
   @override
   Future<HostStats> hostStats(String hostId) async {
     if (hostId.isEmpty) return const HostStats();
-    final snap = await _col.where('hostId', isEqualTo: hostId).get();
+    // Public hosted activities only — circle hangouts aren't readable by
+    // everyone, so the query must exclude them (rules aren't filters).
+    final snap = await _col
+        .where('hostId', isEqualTo: hostId)
+        .where('circleId', isNull: true)
+        .get();
     final hosted = snap.docs.map(_fromDoc).toList();
     var sum = 0;
     var count = 0;
@@ -123,20 +130,43 @@ class FirestoreActivityRepository implements ActivityRepository {
     );
   }
 
+  @override
+  Future<Activity> leaveActivity(String activityId, String userId) async {
+    final doc = _col.doc(activityId);
+    await doc.update({
+      'memberIds': FieldValue.arrayRemove([userId]),
+      'likedBy': FieldValue.arrayRemove([userId]),
+      'ratings.$userId': FieldValue.delete(),
+    });
+    final snap = await doc.get();
+    return _fromDoc(snap);
+  }
+
+  @override
+  Future<Activity> removeMember(String activityId, String memberId) async {
+    final doc = _col.doc(activityId);
+    await doc.update({
+      'memberIds': FieldValue.arrayRemove([memberId]),
+      'removedIds': FieldValue.arrayUnion([memberId]),
+    });
+    final snap = await doc.get();
+    return _fromDoc(snap);
+  }
+
   Map<String, dynamic> _toMap(Activity a) => {
-        'title': a.title,
-        'description': a.description,
-        'placeSuggestion': a.placeSuggestion,
-        'startAt': Timestamp.fromDate(a.startAt),
-        'hostId': a.hostId,
-        'category': a.category.id,
-        'coverImageUrl': a.coverImageUrl,
-        'memberIds': a.memberIds,
-        'likedBy': a.likedBy,
-        'isSuggested': a.isSuggested,
-        'circleId': a.circleId,
-        'ratings': a.ratings,
-      };
+    'title': a.title,
+    'description': a.description,
+    'placeSuggestion': a.placeSuggestion,
+    'startAt': Timestamp.fromDate(a.startAt),
+    'hostId': a.hostId,
+    'category': a.category.id,
+    'coverImageUrl': a.coverImageUrl,
+    'memberIds': a.memberIds,
+    'likedBy': a.likedBy,
+    'isSuggested': a.isSuggested,
+    'circleId': a.circleId,
+    'ratings': a.ratings,
+  };
 
   Activity _fromDoc(DocumentSnapshot<Map<String, dynamic>> snap) {
     final data = snap.data()!;
@@ -147,13 +177,16 @@ class FirestoreActivityRepository implements ActivityRepository {
       placeSuggestion: data['placeSuggestion'] as String? ?? '',
       startAt: (data['startAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
       hostId: data['hostId'] as String? ?? '',
-      category: ActivityCategory.fromId(data['category'] as String? ?? 'drinks'),
+      category: ActivityCategory.fromId(
+        data['category'] as String? ?? 'drinks',
+      ),
       coverImageUrl: data['coverImageUrl'] as String?,
       memberIds: List<String>.from(data['memberIds'] as List? ?? const []),
       likedBy: _readLikedBy(data),
       isSuggested: data['isSuggested'] as bool? ?? false,
       circleId: data['circleId'] as String?,
       ratings: _readRatings(data),
+      removedIds: List<String>.from(data['removedIds'] as List? ?? const []),
     );
   }
 

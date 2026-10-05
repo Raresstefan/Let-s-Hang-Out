@@ -14,7 +14,7 @@ import '../../../domain/models/activity.dart';
 
 /// A single activity rendered as an image-forward Card: full-bleed cover with a
 /// gradient scrim, glass chips, the title/time/place laid over the photo, and a
-/// gradient "Join" pill. Fires `Hang:${title}:OnLoad` once.
+/// gradient "Join" pill. Fires `content_viewed` once.
 class ActivityCard extends StatefulWidget {
   const ActivityCard({
     super.key,
@@ -107,7 +107,7 @@ class _ActivityCardState extends State<ActivityCard> {
                     children: [
                       _CategoryChip(
                         emoji: a.category.emoji,
-                        label: l.tr('feed.filters.${a.category.id}'),
+                        label: a.category.label,
                         color: catColor,
                       ),
                       const Spacer(),

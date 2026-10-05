@@ -17,7 +17,7 @@ import 'circle_repository.dart';
 /// the chat's memberIds.
 class FirestoreCircleRepository implements CircleRepository {
   FirestoreCircleRepository(this._chats, [FirebaseFirestore? db])
-      : _db = db ?? FirebaseFirestore.instance;
+    : _db = db ?? FirebaseFirestore.instance;
 
   final FirebaseFirestore _db;
   final ChatRepository _chats;
@@ -78,13 +78,16 @@ class FirestoreCircleRepository implements CircleRepository {
     if (toId.isEmpty || toId == fromId || circle.memberIds.contains(toId)) {
       return;
     }
-    // Skip if a pending invite to this circle already exists for the invitee.
-    final existing = await _invites.where('toId', isEqualTo: toId).get();
-    final dup = existing.docs.map(_inviteFromDoc).any(
-        (i) => i.circleId == circle.id && i.status == 'pending');
-    if (dup) return;
-    final id = _uuid.v4();
-    await _invites.doc(id).set({
+    // Deterministic id (`{circleId}_{toId}`) — the rules verify it before
+    // letting the invitee add themselves to the circle. Skip if a pending
+    // invite already exists; clear a stale non-pending one.
+    final doc = _invites.doc(inviteId(circle.id, toId));
+    final existing = await doc.get();
+    if (existing.exists) {
+      if (existing.data()?['status'] == 'pending') return;
+      await doc.delete();
+    }
+    await doc.set({
       'circleId': circle.id,
       'circleName': circle.name,
       'fromId': fromId,
@@ -103,7 +106,12 @@ class FirestoreCircleRepository implements CircleRepository {
     }, SetOptions(merge: true));
     // Join the persistent circle chat.
     await _chats.addMember(invite.circleId, invite.toId);
+    // Handshake done; remove it so a future re-invite can be created fresh.
+    await _invites.doc(invite.id).delete();
   }
+
+  /// `circle_invites/{circleId}_{toId}` — the rules rely on this shape.
+  static String inviteId(String circleId, String toId) => '${circleId}_$toId';
 
   @override
   Future<void> declineInvite(CircleInvite invite) async {
@@ -121,10 +129,12 @@ class FirestoreCircleRepository implements CircleRepository {
     return _invites
         .where('toId', isEqualTo: uid)
         .snapshots()
-        .map((q) => q.docs
-            .map(_inviteFromDoc)
-            .where((i) => i.status == 'pending')
-            .toList());
+        .map(
+          (q) => q.docs
+              .map(_inviteFromDoc)
+              .where((i) => i.status == 'pending')
+              .toList(),
+        );
   }
 
   @override
@@ -134,6 +144,13 @@ class FirestoreCircleRepository implements CircleRepository {
         .map(_inviteFromDoc)
         .where((i) => i.status == 'pending')
         .toList();
+  }
+
+  @override
+  Future<void> leaveCircle(String circleId, String uid) async {
+    await _circles.doc(circleId).update({
+      'memberIds': FieldValue.arrayRemove([uid]),
+    });
   }
 
   Circle _fromDoc(DocumentSnapshot<Map<String, dynamic>> snap) {

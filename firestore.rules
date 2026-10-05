@@ -2,6 +2,19 @@ rules_version = '2';
 
 // Hang Out — Firestore security rules.
 // Publish via: Firebase console → Firestore Database → Rules tab → paste → Publish.
+//
+// Principles:
+//  - Every cross-user write is FIELD-SCOPED and SELF-SCOPED: a caller may only
+//    add/remove their OWN uid (join, leave, like, accept) — never edit other
+//    fields or other people's entries.
+//  - Membership-gated data (chats, circles, circle hangouts) is checked against
+//    the backing document, never against data the caller is writing.
+//  - Handshake docs use deterministic ids so rules can verify them:
+//      friend_requests/{fromId}_{toId}
+//      circle_invites/{circleId}_{toId}
+//
+// Required composite index (Firestore → Indexes → Composite), also listed in
+// firestore.indexes.json:  activities  circleId ASC, startAt ASC
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -9,155 +22,434 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    // Users: anyone signed-in can read profiles (for sender names/avatars).
-    // A user may write their own doc freely. Additionally, any signed-in user
-    // may append ONLY THEIR OWN uid to someone else's `friendIds` (and change
-    // no other field) — this is the field-scoped write that lets a friend
-    // request acceptance link both sides. Mirrors the activities `likedBy` rule.
+    function me() {
+      return request.auth.uid;
+    }
+
+    function docPath(collection, id) {
+      return /databases/$(database)/documents/$(collection)/$(id);
+    }
+
+    // Keys that changed between the stored doc and the proposed write.
+    function changed() {
+      return request.resource.data.diff(resource.data).affectedKeys();
+    }
+
+    // `after` is exactly `before` plus the caller's uid (no duplicates).
+    function addsOnlyMe(before, after) {
+      return !(me() in before) &&
+        after.size() == before.size() + 1 &&
+        after.toSet() == before.toSet().union([me()].toSet());
+    }
+
+    // `after` is exactly `before` minus the caller's uid.
+    function removesOnlyMe(before, after) {
+      return me() in before &&
+        after.size() == before.size() - 1 &&
+        after.toSet() == before.toSet().difference([me()].toSet());
+    }
+
+    // `after` only drops entries from `before` (never adds anyone).
+    function onlyRemoves(before, after) {
+      return after.toSet().difference(before.toSet()).size() == 0;
+    }
+
+    function circleMembers(circleId) {
+      return get(docPath('circles', circleId)).data.memberIds;
+    }
+
+    // Uids that `uid` has blocked (blocks/{uid}.ids), or [] if none.
+    function blockedBy(uid) {
+      return exists(docPath('blocks', uid))
+        ? get(docPath('blocks', uid)).data.ids
+        : [];
+    }
+
+    // ───────────────────────────── Users ─────────────────────────────
+    // Profiles are public to signed-in users (names/avatars). A user writes
+    // their own doc. The only cross-user write: adding/removing your OWN uid
+    // in someone's `friendIds` — adding requires that THEY sent you a friend
+    // request you have accepted (friend_requests/{them}_{me}).
     match /users/{uid} {
       allow read: if signedIn();
-      allow create: if signedIn() && request.auth.uid == uid;
+      allow create: if signedIn() && me() == uid;
       allow update: if signedIn() && (
-        request.auth.uid == uid ||
+        me() == uid ||
         (
-          // Cross-user write: ONLY the friendIds field may change, and the
-          // single difference must be the caller's OWN uid — either added
-          // (accepting a request) or removed (unfriending). Tolerates the doc
-          // having no prior friendIds field.
-          request.resource.data.diff(resource.data)
-            .affectedKeys().hasOnly(['friendIds']) &&
+          changed().hasOnly(['friendIds']) &&
           (
-            // Adding self: present after, absent before.
             (
-              request.auth.uid in request.resource.data.friendIds &&
-              !(request.auth.uid in
-                (resource.data.keys().hasAny(['friendIds'])
-                  ? resource.data.friendIds : []))
+              addsOnlyMe(resource.data.get('friendIds', []),
+                         request.resource.data.friendIds) &&
+              get(docPath('friend_requests', uid + '_' + me())).data.status == 'accepted'
             ) ||
-            // Removing self: absent after, present before.
-            (
-              !(request.auth.uid in request.resource.data.friendIds) &&
-              request.auth.uid in
-                (resource.data.keys().hasAny(['friendIds'])
-                  ? resource.data.friendIds : [])
-            )
+            removesOnlyMe(resource.data.get('friendIds', []),
+                          request.resource.data.friendIds)
           )
         )
       );
-      allow delete: if false;
+      allow delete: if signedIn() && me() == uid;
     }
 
-    // Friend requests: the pending handshake.
-    //
-    // Reads are split: `get` (single doc) is allowed to either party; `list`
-    // (a query) is allowed only when the query is scoped to the requester via a
-    // `fromId == me` or `toId == me` filter — Firestore evaluates these
-    // conditions against the query's constraints, so an unscoped query is
-    // rejected (a client can't list other people's requests).
+    // ───────────────────────── Friend requests ─────────────────────────
+    // Doc id is `{fromId}_{toId}`. Only the two parties can read; queries must
+    // be scoped to `fromId == me` or `toId == me`. A `get` on a missing doc is
+    // allowed so the client can check for an existing request.
     match /friend_requests/{requestId} {
       allow get: if signedIn() && (
-        request.auth.uid == resource.data.fromId ||
-        request.auth.uid == resource.data.toId
+        resource == null ||
+        me() == resource.data.fromId ||
+        me() == resource.data.toId
       );
-      allow list: if signedIn();
+      allow list: if signedIn() && (
+        resource.data.fromId == me() || resource.data.toId == me()
+      );
       allow create: if signedIn() &&
-        request.resource.data.fromId == request.auth.uid &&
-        request.resource.data.status == 'pending';
-      // Accept: only the recipient may flip status.
-      allow update: if signedIn() && request.auth.uid == resource.data.toId;
-      // Decline (recipient) or cancel (sender).
+        request.resource.data.keys().hasOnly(['fromId', 'toId', 'status', 'createdAt']) &&
+        request.resource.data.fromId == me() &&
+        request.resource.data.toId is string &&
+        request.resource.data.toId != me() &&
+        requestId == me() + '_' + request.resource.data.toId &&
+        request.resource.data.status == 'pending' &&
+        !(me() in blockedBy(request.resource.data.toId));
+      // Accept: only the recipient, only pending → accepted, nothing else.
+      allow update: if signedIn() &&
+        me() == resource.data.toId &&
+        changed().hasOnly(['status']) &&
+        resource.data.status == 'pending' &&
+        request.resource.data.status == 'accepted';
+      // Decline (recipient), cancel (sender), or clean-up after accept.
       allow delete: if signedIn() && (
-        request.auth.uid == resource.data.fromId ||
-        request.auth.uid == resource.data.toId
+        me() == resource.data.fromId || me() == resource.data.toId
       );
     }
 
-    // Circles: small recurring groups. Readable/updatable by members; created
-    // by the creator. A pending invitee may append ONLY their own uid to
-    // memberIds (field-scoped — same pattern as friendIds/likedBy) so accepting
-    // an invite links them in; members may also update circle metadata.
+    // ───────────────────────────── Circles ─────────────────────────────
+    // Readable by members. Members may rename; joining requires an accepted
+    // invite (circle_invites/{circleId}_{me}); members may leave (creator
+    // can't); the creator may remove members. creatorId is immutable.
     match /circles/{circleId} {
-      allow read: if signedIn() && request.auth.uid in resource.data.memberIds;
+      allow read: if signedIn() && me() in resource.data.memberIds;
       allow create: if signedIn() &&
-        request.resource.data.creatorId == request.auth.uid &&
-        request.auth.uid in request.resource.data.memberIds;
+        request.resource.data.creatorId == me() &&
+        request.resource.data.memberIds == [me()];
       allow update: if signedIn() && (
-        request.auth.uid in resource.data.memberIds ||
-        // Invitee accepting: only memberIds changes, adding exactly own uid.
+        // Rename.
         (
-          request.resource.data.diff(resource.data)
-            .affectedKeys().hasOnly(['memberIds']) &&
-          request.auth.uid in request.resource.data.memberIds &&
-          !(request.auth.uid in resource.data.memberIds)
+          me() in resource.data.memberIds &&
+          changed().hasOnly(['name', 'emoji'])
+        ) ||
+        // Accept an invite: add exactly own uid.
+        (
+          changed().hasOnly(['memberIds']) &&
+          addsOnlyMe(resource.data.memberIds, request.resource.data.memberIds) &&
+          get(docPath('circle_invites', circleId + '_' + me())).data.status == 'accepted'
+        ) ||
+        // Leave (non-creator).
+        (
+          changed().hasOnly(['memberIds']) &&
+          me() != resource.data.creatorId &&
+          removesOnlyMe(resource.data.memberIds, request.resource.data.memberIds)
+        ) ||
+        // Creator removes members (never themselves).
+        (
+          changed().hasOnly(['memberIds']) &&
+          me() == resource.data.creatorId &&
+          me() in request.resource.data.memberIds &&
+          onlyRemoves(resource.data.memberIds, request.resource.data.memberIds)
         )
       );
-      allow delete: if signedIn() && resource.data.creatorId == request.auth.uid;
+      allow delete: if signedIn() && resource.data.creatorId == me();
     }
 
-    // Circle invites: mirror friend_requests. get by either party; list for any
-    // signed-in user (app only queries scoped to self); create by sender;
-    // update (accept) by recipient; delete (decline/cancel) by either party.
+    // ────────────────────────── Circle invites ──────────────────────────
+    // Doc id is `{circleId}_{toId}`. Readable by the two parties and by the
+    // circle's members (the circle's "pending" list). Only members can invite,
+    // and only non-members.
     match /circle_invites/{inviteId} {
       allow get: if signedIn() && (
-        request.auth.uid == resource.data.fromId ||
-        request.auth.uid == resource.data.toId
+        resource == null ||
+        me() == resource.data.fromId ||
+        me() == resource.data.toId ||
+        me() in circleMembers(resource.data.circleId)
       );
-      allow list: if signedIn();
+      allow list: if signedIn() && (
+        resource.data.toId == me() ||
+        resource.data.fromId == me() ||
+        me() in circleMembers(resource.data.circleId)
+      );
       allow create: if signedIn() &&
-        request.resource.data.fromId == request.auth.uid &&
-        request.resource.data.status == 'pending';
-      allow update: if signedIn() && request.auth.uid == resource.data.toId;
+        request.resource.data.keys().hasOnly(
+          ['circleId', 'circleName', 'fromId', 'toId', 'status', 'createdAt']) &&
+        request.resource.data.fromId == me() &&
+        request.resource.data.toId is string &&
+        request.resource.data.toId != me() &&
+        request.resource.data.status == 'pending' &&
+        inviteId == request.resource.data.circleId + '_' + request.resource.data.toId &&
+        me() in circleMembers(request.resource.data.circleId) &&
+        !(request.resource.data.toId in circleMembers(request.resource.data.circleId)) &&
+        !(me() in blockedBy(request.resource.data.toId));
+      allow update: if signedIn() &&
+        me() == resource.data.toId &&
+        changed().hasOnly(['status']) &&
+        resource.data.status == 'pending' &&
+        request.resource.data.status == 'accepted';
       allow delete: if signedIn() && (
-        request.auth.uid == resource.data.fromId ||
-        request.auth.uid == resource.data.toId
+        me() == resource.data.fromId ||
+        me() == resource.data.toId ||
+        me() in circleMembers(resource.data.circleId)
       );
     }
 
-    // Activities: readable by any signed-in user (the discover feed).
-    // Create: must be signed in and be the host. Update: host or a member
-    // (e.g. join() appends to memberIds).
+    // ──────────────────────────── Activities ────────────────────────────
+    // Public activities (circleId == null) are readable by any signed-in user;
+    // circle hangouts only by their members / the circle's members. The feed
+    // query MUST filter `circleId == null` (rules are not filters).
     match /activities/{activityId} {
-      allow read: if signedIn();
-      allow create: if signedIn() && request.resource.data.hostId == request.auth.uid;
-      allow update: if signedIn() && (
-        resource.data.hostId == request.auth.uid ||
-        request.auth.uid in resource.data.memberIds ||
-        request.auth.uid in request.resource.data.memberIds ||
-        // Like/unlike: any signed-in user may update, but only the likedBy field
-        // may change (can't tamper with other fields while liking).
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likedBy']) ||
-        // Post-hang rating: a member may write only the ratings field.
+      function isPublic(data) {
+        return data.get('circleId', null) == null;
+      }
+
+      function canSee(data) {
+        return isPublic(data) ||
+          me() in data.memberIds ||
+          me() in circleMembers(data.circleId);
+      }
+
+      allow get: if signedIn() && canSee(resource.data);
+      allow list: if signedIn() && (
+        resource.data.circleId == null ||
+        me() in resource.data.memberIds
+      );
+
+      // Create: caller is the host and a member; no seeded likes/ratings;
+      // `isSuggested` is editorial (never client-set). Public activities start
+      // with only the host; circle hangouts may pre-fill circle members.
+      allow create: if signedIn() &&
+        request.resource.data.hostId == me() &&
+        request.resource.data.title is string &&
+        request.resource.data.title.size() > 0 &&
+        request.resource.data.title.size() <= 120 &&
+        request.resource.data.description is string &&
+        request.resource.data.description.size() <= 2000 &&
+        request.resource.data.startAt is timestamp &&
+        request.resource.data.get('likedBy', []).size() == 0 &&
+        request.resource.data.get('ratings', {}).size() == 0 &&
+        request.resource.data.get('isSuggested', false) == false &&
+        request.resource.data.get('removedIds', []).size() == 0 &&
         (
-          request.auth.uid in resource.data.memberIds &&
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['ratings'])
+          isPublic(request.resource.data)
+            ? request.resource.data.memberIds == [me()]
+            : (
+                me() in request.resource.data.memberIds &&
+                me() in circleMembers(request.resource.data.circleId) &&
+                request.resource.data.memberIds.toSet().difference(
+                  circleMembers(request.resource.data.circleId).toSet()).size() == 0
+              )
+        );
+
+      allow update: if signedIn() && (
+        // 1. Host edits details / removes members. Can't touch hostId,
+        //    likes, ratings, circleId or isSuggested; can't add members.
+        //    `removedIds` (rejoin ban) only grows, and only with uids that
+        //    were members.
+        (
+          resource.data.hostId == me() &&
+          changed().hasOnly(['title', 'description', 'placeSuggestion',
+                             'startAt', 'category', 'coverImageUrl',
+                             'memberIds', 'removedIds']) &&
+          me() in request.resource.data.memberIds &&
+          onlyRemoves(resource.data.memberIds, request.resource.data.memberIds) &&
+          request.resource.data.get('removedIds', []).toSet().hasAll(
+            resource.data.get('removedIds', [])) &&
+          request.resource.data.get('removedIds', []).toSet()
+            .difference(resource.data.get('removedIds', []).toSet())
+            .difference(resource.data.memberIds.toSet()).size() == 0 &&
+          request.resource.data.title is string &&
+          request.resource.data.title.size() > 0 &&
+          request.resource.data.title.size() <= 120
+        ) ||
+        // 2. Join: add exactly own uid to an upcoming activity you can see,
+        //    unless the host removed you or has blocked you.
+        (
+          changed().hasOnly(['memberIds']) &&
+          addsOnlyMe(resource.data.memberIds, request.resource.data.memberIds) &&
+          resource.data.startAt > request.time &&
+          canSee(resource.data) &&
+          !(me() in resource.data.get('removedIds', [])) &&
+          !(me() in blockedBy(resource.data.hostId))
+        ) ||
+        // 3. Leave (non-host): remove own uid + own like/rating, nothing else.
+        (
+          me() != resource.data.hostId &&
+          changed().hasOnly(['memberIds', 'likedBy', 'ratings']) &&
+          removesOnlyMe(resource.data.memberIds, request.resource.data.memberIds) &&
+          request.resource.data.get('likedBy', []).toSet() ==
+            resource.data.get('likedBy', []).toSet().difference([me()].toSet()) &&
+          request.resource.data.get('ratings', {}).diff(
+            resource.data.get('ratings', {})).affectedKeys().hasOnly([me()]) &&
+          !(me() in request.resource.data.get('ratings', {}))
+        ) ||
+        // 4. Like / unlike: toggle own uid in likedBy only.
+        (
+          changed().hasOnly(['likedBy']) &&
+          canSee(resource.data) &&
+          (
+            addsOnlyMe(resource.data.get('likedBy', []), request.resource.data.likedBy) ||
+            removesOnlyMe(resource.data.get('likedBy', []), request.resource.data.likedBy)
+          )
+        ) ||
+        // 5. Rate: a non-host member, after start, writes only own 1–5 rating.
+        (
+          changed().hasOnly(['ratings']) &&
+          me() in resource.data.memberIds &&
+          me() != resource.data.hostId &&
+          resource.data.startAt <= request.time &&
+          request.resource.data.ratings.diff(
+            resource.data.get('ratings', {})).affectedKeys().hasOnly([me()]) &&
+          request.resource.data.ratings[me()] is int &&
+          request.resource.data.ratings[me()] >= 1 &&
+          request.resource.data.ratings[me()] <= 5
         )
       );
-      allow delete: if signedIn() && resource.data.hostId == request.auth.uid;
+      allow delete: if signedIn() && resource.data.hostId == me();
     }
 
-    // Chats: one doc per activity (id == activityId). A signed-in user may read
-    // the chat doc — needed so the client can check whether a chat exists yet
-    // (ensureChat does a get() on a possibly-missing doc, where resource.data is
-    // null) and to render My Activities. Membership is still enforced for
-    // messages below. Create requires the creator be in the new memberIds;
-    // update requires the caller be an existing or resulting member.
-    match /chats/{activityId} {
-      allow read: if signedIn();
-      allow create: if signedIn() && request.auth.uid in request.resource.data.memberIds;
+    // ─────────────────────────────── Chats ───────────────────────────────
+    // One doc per activity or circle (chats/{activityId|circleId}). Membership
+    // must always be a subset of the backing activity's/circle's members, so
+    // nobody can add themselves to a chat they don't belong to.
+    match /chats/{chatId} {
+      function backingMembers() {
+        return exists(docPath('activities', chatId))
+          ? get(docPath('activities', chatId)).data.memberIds
+          : circleMembers(chatId);
+      }
+
+      function isChatMember() {
+        return me() in get(docPath('chats', chatId)).data.memberIds;
+      }
+
+      // `resource == null` lets the client check whether a chat exists yet
+      // without exposing other people's chats. Backing members (activity or
+      // circle members not yet in the chat) may read it so they can join.
+      allow get: if signedIn() && (
+        resource == null || me() in resource.data.memberIds ||
+        me() in backingMembers()
+      );
+      allow list: if signedIn() && me() in resource.data.memberIds;
+
+      allow create: if signedIn() &&
+        request.resource.data.keys().hasOnly(['activityId', 'title', 'memberIds',
+          'createdAt', 'lastMessageAt', 'lastMessageText']) &&
+        me() in request.resource.data.memberIds &&
+        me() in backingMembers() &&
+        request.resource.data.memberIds.toSet().difference(
+          backingMembers().toSet()).size() == 0;
+
       allow update: if signedIn() && (
-        request.auth.uid in resource.data.memberIds ||
-        request.auth.uid in request.resource.data.memberIds
+        // Preview of the latest message, by a member.
+        (
+          me() in resource.data.memberIds &&
+          changed().hasOnly(['lastMessageText', 'lastMessageAt'])
+        ) ||
+        // Membership sync: anyone added must be a backing member; anyone else
+        // removed must no longer be one. Non-members may only remove themselves.
+        (
+          changed().hasOnly(['memberIds']) &&
+          request.resource.data.memberIds.toSet()
+            .difference(resource.data.memberIds.toSet())
+            .difference(backingMembers().toSet()).size() == 0 &&
+          resource.data.memberIds.toSet()
+            .difference(request.resource.data.memberIds.toSet())
+            .difference([me()].toSet())
+            .intersection(backingMembers().toSet()).size() == 0 &&
+          (
+            me() in backingMembers() ||
+            removesOnlyMe(resource.data.memberIds, request.resource.data.memberIds)
+          )
+        )
       );
 
-      // Messages: only chat members may read; a member may create a message
-      // and must be the sender.
+      // Messages: members only. User messages carry text; system lines are
+      // structured (event + subject) and verified here so they can't be
+      // forged — the client renders their text from the event.
       match /messages/{messageId} {
-        allow read: if signedIn() &&
-          request.auth.uid in get(/databases/$(database)/documents/chats/$(activityId)).data.memberIds;
+        function msg() {
+          return request.resource.data;
+        }
+
+        function isUserMessage() {
+          return msg().keys().hasOnly(['senderId', 'text', 'createdAt', 'type']) &&
+            msg().type == 'user' &&
+            msg().text is string &&
+            msg().text.size() > 0 &&
+            msg().text.size() <= 2000;
+        }
+
+        function isSystemMessage() {
+          return msg().keys().hasOnly(['senderId', 'createdAt', 'type', 'event',
+              'subjectId', 'name', 'title', 'activityId']) &&
+            msg().type == 'system' &&
+            msg().name == get(docPath('users', msg().subjectId)).data.get('displayName', '') &&
+            (
+              // "{name} joined" — about any current member of this chat.
+              (msg().event == 'joined' &&
+                msg().subjectId in get(docPath('chats', chatId)).data.memberIds) ||
+              // "{name} left" — only about yourself.
+              (msg().event in ['hostLeft', 'creatorLeft'] &&
+                msg().subjectId == me()) ||
+              // "{name} planned {title}" — a hangout you host in this circle.
+              (msg().event == 'planned' &&
+                msg().subjectId == me() &&
+                get(docPath('activities', msg().activityId)).data.circleId == chatId &&
+                get(docPath('activities', msg().activityId)).data.hostId == me() &&
+                get(docPath('activities', msg().activityId)).data.title == msg().title)
+            );
+        }
+
+        allow read: if signedIn() && isChatMember();
         allow create: if signedIn() &&
-          request.resource.data.senderId == request.auth.uid &&
-          request.auth.uid in get(/databases/$(database)/documents/chats/$(activityId)).data.memberIds;
+          isChatMember() &&
+          msg().senderId == me() &&
+          msg().createdAt == request.time &&
+          (isUserMessage() || isSystemMessage());
       }
+    }
+
+    // ───────────────────────────── Blocks ─────────────────────────────
+    // blocks/{uid} = { ids: [blocked uids] }. Private to its owner; rules read
+    // it server-side to stop blocked users joining/requesting/inviting.
+    match /blocks/{uid} {
+      allow read, delete: if signedIn() && me() == uid;
+      allow create, update: if signedIn() && me() == uid &&
+        request.resource.data.keys().hasOnly(['ids']) &&
+        request.resource.data.ids is list &&
+        request.resource.data.ids.size() <= 1000 &&
+        !(uid in request.resource.data.ids);
+    }
+
+    // ───────────────────────────── Reports ─────────────────────────────
+    // Write-only for clients; reviewed by moderators in the console.
+    match /reports/{reportId} {
+      allow read, update, delete: if false;
+      allow create: if signedIn() &&
+        request.resource.data.keys().hasOnly(['reporterId', 'targetType',
+          'targetId', 'reason', 'details', 'chatId', 'activityId', 'status',
+          'createdAt']) &&
+        request.resource.data.reporterId == me() &&
+        request.resource.data.targetType in ['user', 'activity', 'message'] &&
+        request.resource.data.targetId is string &&
+        request.resource.data.targetId.size() > 0 &&
+        request.resource.data.targetId.size() <= 200 &&
+        request.resource.data.reason in
+          ['harassment', 'inappropriate', 'spam', 'scam', 'safety', 'other'] &&
+        request.resource.data.details is string &&
+        request.resource.data.details.size() <= 1000 &&
+        request.resource.data.get('chatId', '') is string &&
+        request.resource.data.get('activityId', '') is string &&
+        request.resource.data.status == 'open' &&
+        request.resource.data.createdAt == request.time;
     }
   }
 }

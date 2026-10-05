@@ -1,22 +1,23 @@
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:flutter/material.dart';
 
+import '../../../core/l10n/app_localizations.dart';
+import '../../../core/theme/category_style.dart';
 import '../../../core/widgets/cover_image.dart';
 import '../../../core/widgets/image_pick.dart';
+import '../../../domain/models/activity_category.dart';
 
-/// A drag & drop box for the activity cover image. Users can drop a .png/.jpg
-/// file onto it or click to browse. On selection it shows a preview and reports
-/// a `data:` URL via [onChanged] (which flows through the existing
-/// `coverImageUrl` String field). Pass null to [onChanged] when cleared.
+/// Compact optional cover picker. The category visual remains the default,
+/// while desktop users can still drop a photo anywhere on this control.
 class CoverDropZone extends StatefulWidget {
   const CoverDropZone({
     super.key,
+    required this.category,
     required this.onChanged,
-    this.hint,
   });
 
-  final ValueChanged<String?> onChanged;
-  final String? hint;
+  final ActivityCategory category;
+  final ValueChanged<PickedImage?> onChanged;
 
   @override
   State<CoverDropZone> createState() => _CoverDropZoneState();
@@ -24,31 +25,20 @@ class CoverDropZone extends StatefulWidget {
 
 class _CoverDropZoneState extends State<CoverDropZone> {
   bool _dragging = false;
-  String? _dataUrl; // current preview source
-  String? _fileName;
-
-  bool _hasImage = false;
+  PickedImage? _picked;
 
   void _apply(PickedImage? picked) {
-    if (picked == null) return; // cancelled
+    if (picked == null) return;
     if (!picked.ok) {
-      _showError(message: picked.error);
+      _showError(picked.error);
       return;
     }
-    setState(() {
-      _dataUrl = picked.dataUrl;
-      _fileName = picked.fileName;
-      _hasImage = true;
-    });
-    widget.onChanged(picked.dataUrl);
+    setState(() => _picked = picked);
+    widget.onChanged(picked);
   }
 
   void _clear() {
-    setState(() {
-      _dataUrl = null;
-      _fileName = null;
-      _hasImage = false;
-    });
+    setState(() => _picked = null);
     widget.onChanged(null);
   }
 
@@ -61,7 +51,7 @@ class _CoverDropZoneState extends State<CoverDropZone> {
     _apply(await PickedImage.browse());
   }
 
-  void _showError({String? message}) {
+  void _showError(String? message) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message ?? 'Please choose a .png or .jpg image')),
@@ -70,105 +60,106 @@ class _CoverDropZoneState extends State<CoverDropZone> {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
     final scheme = Theme.of(context).colorScheme;
-    final borderColor = _dragging ? scheme.primary : scheme.outlineVariant;
 
     return DropTarget(
       onDragEntered: (_) => setState(() => _dragging = true),
       onDragExited: (_) => setState(() => _dragging = false),
       onDragDone: _handleDrop,
-      // Centre a card-shaped (16:9) frame so the preview matches how covers
-      // appear on the activity cards, instead of a wide, stretched strip.
-      child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 360),
-          child: InkWell(
-            onTap: _browse,
-            borderRadius: BorderRadius.circular(14),
-            child: AspectRatio(
-              aspectRatio: 16 / 9,
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 120),
-                decoration: BoxDecoration(
-                  color: _dragging
-                      ? scheme.primary.withValues(alpha: 0.06)
-                      : scheme.surfaceContainerHighest.withValues(alpha: 0.4),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(
-                    color: borderColor,
-                    width: _dragging ? 2 : 1.5,
-                  ),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 120),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: _dragging
+              ? scheme.primary.withValues(alpha: 0.08)
+              : scheme.surfaceContainerHighest.withValues(alpha: 0.35),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: _dragging ? scheme.primary : scheme.outlineVariant,
+            width: _dragging ? 2 : 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 112,
+              child: AspectRatio(
+                aspectRatio: 16 / 9,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: _picked != null
+                      ? CoverImage(source: _picked!.dataUrl!)
+                      : DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: CategoryStyle.gradient(widget.category),
+                          ),
+                          child: Center(
+                            child: Text(
+                              widget.category.emoji,
+                              style: const TextStyle(fontSize: 30),
+                            ),
+                          ),
+                        ),
                 ),
-                clipBehavior: Clip.antiAlias,
-                child: _hasImage ? _preview(scheme) : _empty(scheme),
               ),
             ),
-          ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _picked?.fileName ??
+                        l.tr('activity.create.categoryCover', {
+                          'category': widget.category.label,
+                        }),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    _picked == null
+                        ? l.tr('activity.create.coverFallback')
+                        : l.tr('activity.create.coverSelected'),
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 4,
+                    children: [
+                      TextButton.icon(
+                        onPressed: _browse,
+                        icon: Icon(
+                          _picked == null
+                              ? Icons.add_photo_alternate_outlined
+                              : Icons.swap_horiz,
+                          size: 18,
+                        ),
+                        label: Text(
+                          l.tr(
+                            _picked == null
+                                ? 'activity.create.coverAdd'
+                                : 'activity.create.coverReplace',
+                          ),
+                        ),
+                      ),
+                      if (_picked != null)
+                        TextButton(
+                          onPressed: _clear,
+                          child: Text(l.tr('activity.create.coverRemove')),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
-    );
-  }
-
-  Widget _empty(ColorScheme scheme) {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.cloud_upload_outlined, size: 40, color: scheme.primary),
-          const SizedBox(height: 8),
-          Text(
-            widget.hint ?? 'Drag & drop an image here',
-            style: TextStyle(color: scheme.onSurfaceVariant),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'or click to browse · PNG, JPG',
-            style: TextStyle(
-              color: scheme.onSurfaceVariant,
-              fontSize: 12,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _preview(ColorScheme scheme) {
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        CoverImage(source: _dataUrl!),
-        Positioned(
-          top: 8,
-          right: 8,
-          child: Material(
-            color: Colors.black54,
-            shape: const CircleBorder(),
-            child: IconButton(
-              tooltip: 'Remove image',
-              icon: const Icon(Icons.close, color: Colors.white, size: 20),
-              onPressed: _clear,
-            ),
-          ),
-        ),
-        if (_fileName != null)
-          Positioned(
-            left: 8,
-            bottom: 8,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: Colors.black54,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                _fileName!,
-                style: const TextStyle(color: Colors.white, fontSize: 12),
-              ),
-            ),
-          ),
-      ],
     );
   }
 }

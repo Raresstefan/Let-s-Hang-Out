@@ -28,4 +28,10 @@ class MockAuthService extends AuthService {
     _signedIn = false;
     notifyListeners();
   }
+
+  @override
+  Future<void> deleteAccount() async {
+    _signedIn = false;
+    notifyListeners();
+  }
 }

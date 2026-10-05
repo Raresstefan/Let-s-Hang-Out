@@ -7,11 +7,8 @@ import '../../data/repositories/chat_repository.dart';
 import '../../data/repositories/user_repository.dart';
 import '../../domain/models/activity.dart';
 import '../../domain/models/activity_category.dart';
-
-/// Builds the localized "X joined the activity" system line. The l10n layer is
-/// context-bound (widget tree); the controller has no BuildContext, so the
-/// template lives here. Mirrors the `chat.systemJoined` key (en_US-only today).
-String _systemJoinedLine(String name) => '$name joined the activity';
+import '../../domain/models/message.dart';
+import '../safety/safety_controller.dart';
 
 /// Drives the discover feed: loading, the active emoji filter, and joining.
 class FeedController extends ChangeNotifier {
@@ -21,12 +18,23 @@ class FeedController extends ChangeNotifier {
     required AuthService authService,
     required AnalyticsService analytics,
     required UserRepository userRepository,
+    SafetyController? safety,
   })  : _repository = repository,
+        _safety = safety,
         _chatRepository = chatRepository,
         _authService = authService,
         _analytics = analytics,
         _userRepository = userRepository {
+    _safety?.addListener(notifyListeners);
     load();
+  }
+
+  final SafetyController? _safety;
+
+  @override
+  void dispose() {
+    _safety?.removeListener(notifyListeners);
+    super.dispose();
   }
 
   final ActivityRepository _repository;
@@ -69,12 +77,17 @@ class FeedController extends ChangeNotifier {
   /// both client-side over the loaded list (no extra fetch, no index).
   List<Activity> get visibleActivities {
     final q = _query.trim().toLowerCase();
+    final me = _authService.currentUserId;
     return _activities.where((a) {
+      // Hide blocked hosts and activities the host removed me from.
+      if (_safety?.isBlocked(a.hostId) ?? false) return false;
+      if (me != null && a.isRemoved(me)) return false;
       if (_activeFilter != null && a.category != _activeFilter) return false;
       if (q.isEmpty) return true;
       return a.title.toLowerCase().contains(q) ||
           a.placeSuggestion.toLowerCase().contains(q) ||
-          a.category.id.toLowerCase().contains(q);
+          a.category.id.toLowerCase().contains(q) ||
+          a.category.label.toLowerCase().contains(q);
     }).toList();
   }
 
@@ -159,7 +172,9 @@ class FeedController extends ChangeNotifier {
       final mine = await _repository.fetchMyActivities(uid);
       final now = DateTime.now();
       final ended = mine
-          .where((a) => a.startAt.isBefore(now) && !a.isRatedBy(uid))
+          // Hosts don't rate their own hangout (rules reject it too).
+          .where((a) =>
+              a.hostId != uid && a.startAt.isBefore(now) && !a.isRatedBy(uid))
           .toList()
         ..sort((a, b) => b.startAt.compareTo(a.startAt));
       _recapCandidate = ended.isEmpty ? null : ended.first;
@@ -183,6 +198,44 @@ class FeedController extends ChangeNotifier {
     _analytics.buttonClicked('filter_all');
     _activeFilter = null;
     notifyListeners();
+  }
+
+  /// Latest copies of activities changed from a details screen that aren't
+  /// in the Discover list (joined/past/circle ones), keyed by id.
+  final Map<String, Activity> _overrides = {};
+
+  /// The freshest known copy of [id]: feed list first, then local overrides.
+  Activity? lookup(String id) {
+    for (final a in _activities) {
+      if (a.id == id) return a;
+    }
+    return _overrides[id];
+  }
+
+  void _store(Activity updated) {
+    final idx = _activities.indexWhere((a) => a.id == updated.id);
+    if (idx != -1) {
+      _activities[idx] = updated;
+    } else {
+      _overrides[updated.id] = updated;
+    }
+    notifyListeners();
+  }
+
+  /// Host-only: removes [memberId] from [activity] and its group chat. They
+  /// can't rejoin (rules check `removedIds`). Throws on failure.
+  Future<void> removeMember(Activity activity, String memberId) async {
+    _analytics.buttonClicked('remove_member',
+        params: {'activity_id': activity.id});
+    final updated = await _repository.removeMember(activity.id, memberId);
+    _store(updated);
+    try {
+      await _chatRepository.removeMember(activity.id, memberId);
+    } catch (_) {
+      // Chat may not exist yet (solo host + 1); the activity is what matters.
+    }
+    _analytics.actionSuccess('removeMember',
+        params: {'activity_id': activity.id});
   }
 
   Future<void> join(Activity activity) async {
@@ -256,16 +309,22 @@ class FeedController extends ChangeNotifier {
   /// At exactly 2 members the chat is created (host + 2nd joiner). Beyond that
   /// the joiner is added. ensureChat is idempotent (doc id == activityId), so
   /// calling it again is safe and self-heals an activity that reached 2 members
-  /// before a chat was successfully created.
+  /// before a chat was successfully created. If the chat already existed (the
+  /// activity shrank back to 1 after a removal), the joiner is added instead.
   Future<void> _syncGroupChat(Activity updated, String joinerId) async {
     final count = updated.memberIds.length;
     if (count < 2) return;
     if (count == 2) {
-      await _chatRepository.ensureChat(
+      final created = await _chatRepository.ensureChat(
         updated.id,
         title: updated.title,
         memberIds: updated.memberIds,
       );
+      if (!created) {
+        await _chatRepository.addMember(updated.id, joinerId);
+        await _emitJoinedSystemLine(updated.id, joinerId, actorId: joinerId);
+        return;
+      }
       _analytics.actionSuccess('createGroupChat',
           params: {'activity_id': updated.id});
       // Seed the fresh chat with a "joined" line for each founding member so it
@@ -295,18 +354,15 @@ class FeedController extends ChangeNotifier {
     required String actorId,
   }) async {
     try {
-      final profiles = await _userRepository.fetchProfiles([memberId]);
-      var name = 'Someone';
-      for (final p in profiles) {
-        if (p.id == memberId && p.displayName.trim().isNotEmpty) {
-          name = p.displayName;
-          break;
-        }
-      }
+      // The stored profile name is required verbatim (the rules verify it);
+      // the chat renders a fallback when it's blank.
+      final profile = await _userRepository.fetchProfile(memberId);
       await _chatRepository.sendSystemMessage(
         activityId,
         actorId: actorId,
-        text: _systemJoinedLine(name),
+        event: SystemEvent.joined,
+        subjectId: memberId,
+        subjectName: profile?.displayName ?? '',
       );
     } catch (_) {
       // Ignore — the chat still works without the system line.

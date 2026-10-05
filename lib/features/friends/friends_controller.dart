@@ -8,6 +8,7 @@ import '../../data/repositories/friend_repository.dart';
 import '../../data/repositories/user_repository.dart';
 import '../../domain/models/app_user.dart';
 import '../../domain/models/friend_request.dart';
+import '../safety/safety_controller.dart';
 
 /// A friend request paired with the other party's resolved profile, for display.
 class RequestEntry {
@@ -25,10 +26,14 @@ class FriendsController extends ChangeNotifier {
     required UserRepository userRepository,
     required AuthService authService,
     required AnalyticsService analytics,
+    SafetyController? safety,
   })  : _friends = friendRepository,
+        _safety = safety,
         _users = userRepository,
         _auth = authService,
         _analytics = analytics {
+    // Block/unblock changes the friends list and what's visible.
+    _safety?.addListener(load);
     _listenIncoming();
     load();
   }
@@ -37,6 +42,9 @@ class FriendsController extends ChangeNotifier {
   final UserRepository _users;
   final AuthService _auth;
   final AnalyticsService _analytics;
+  final SafetyController? _safety;
+
+  bool _visible(String uid) => !(_safety?.isBlocked(uid) ?? false);
 
   StreamSubscription<List<FriendRequest>>? _incomingSub;
 
@@ -47,14 +55,16 @@ class FriendsController extends ChangeNotifier {
   List<AppUser> get friends => _friendsList;
 
   List<RequestEntry> _incoming = [];
-  List<RequestEntry> get incoming => _incoming;
-  int get incomingCount => _incoming.length;
+  List<RequestEntry> get incoming =>
+      _incoming.where((e) => _visible(e.request.fromId)).toList();
+  int get incomingCount => incoming.length;
 
   List<RequestEntry> _outgoing = [];
   List<RequestEntry> get outgoing => _outgoing;
 
   List<AppUser> _searchResults = [];
-  List<AppUser> get searchResults => _searchResults;
+  List<AppUser> get searchResults =>
+      _searchResults.where((u) => _visible(u.id)).toList();
   bool _searching = false;
   bool get searching => _searching;
 
@@ -218,6 +228,7 @@ class FriendsController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _safety?.removeListener(load);
     _incomingSub?.cancel();
     super.dispose();
   }

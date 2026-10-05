@@ -16,18 +16,14 @@ class MockCircleRepository implements CircleRepository {
 
   final Map<String, Circle> _circles = {};
   final List<CircleInvite> _invites = [];
-  final _myCirclesCtrl =
-      StreamController<List<Circle>>.broadcast();
-  final _incomingCtrl =
-      <String, StreamController<List<CircleInvite>>>{};
+  final _myCirclesCtrl = StreamController<List<Circle>>.broadcast();
+  final _incomingCtrl = <String, StreamController<List<CircleInvite>>>{};
 
   void _emitCircles() => _myCirclesCtrl.add(_circles.values.toList());
-  void _emitIncoming(String uid) =>
-      _incomingCtrl[uid]?.add(_pendingTo(uid));
+  void _emitIncoming(String uid) => _incomingCtrl[uid]?.add(_pendingTo(uid));
 
-  List<CircleInvite> _pendingTo(String uid) => _invites
-      .where((i) => i.toId == uid && i.status == 'pending')
-      .toList();
+  List<CircleInvite> _pendingTo(String uid) =>
+      _invites.where((i) => i.toId == uid && i.status == 'pending').toList();
 
   @override
   Future<Circle> createCircle({
@@ -53,8 +49,9 @@ class MockCircleRepository implements CircleRepository {
   @override
   Stream<List<Circle>> myCircles(String uid) {
     scheduleMicrotask(_emitCircles);
-    return _myCirclesCtrl.stream
-        .map((all) => all.where((c) => c.memberIds.contains(uid)).toList());
+    return _myCirclesCtrl.stream.map(
+      (all) => all.where((c) => c.memberIds.contains(uid)).toList(),
+    );
   }
 
   @override
@@ -69,18 +66,21 @@ class MockCircleRepository implements CircleRepository {
     if (toId.isEmpty || toId == fromId || circle.memberIds.contains(toId)) {
       return;
     }
-    final dup = _invites.any((i) =>
-        i.circleId == circle.id && i.toId == toId && i.status == 'pending');
+    final dup = _invites.any(
+      (i) => i.circleId == circle.id && i.toId == toId && i.status == 'pending',
+    );
     if (dup) return;
-    _invites.add(CircleInvite(
-      id: _uuid.v4(),
-      circleId: circle.id,
-      circleName: circle.name,
-      fromId: fromId,
-      toId: toId,
-      status: 'pending',
-      createdAt: DateTime.now(),
-    ));
+    _invites.add(
+      CircleInvite(
+        id: _uuid.v4(),
+        circleId: circle.id,
+        circleName: circle.name,
+        fromId: fromId,
+        toId: toId,
+        status: 'pending',
+        createdAt: DateTime.now(),
+      ),
+    );
     _emitIncoming(toId);
   }
 
@@ -118,7 +118,9 @@ class MockCircleRepository implements CircleRepository {
   @override
   Stream<List<CircleInvite>> incomingInvites(String uid) {
     final ctrl = _incomingCtrl.putIfAbsent(
-        uid, () => StreamController<List<CircleInvite>>.broadcast());
+      uid,
+      () => StreamController<List<CircleInvite>>.broadcast(),
+    );
     scheduleMicrotask(() => ctrl.add(_pendingTo(uid)));
     return ctrl.stream;
   }
@@ -128,4 +130,19 @@ class MockCircleRepository implements CircleRepository {
       _invites
           .where((i) => i.circleId == circleId && i.status == 'pending')
           .toList();
+
+  @override
+  Future<void> leaveCircle(String circleId, String uid) async {
+    final c = _circles[circleId];
+    if (c == null || !c.memberIds.contains(uid)) return;
+    _circles[circleId] = Circle(
+      id: c.id,
+      name: c.name,
+      emoji: c.emoji,
+      creatorId: c.creatorId,
+      memberIds: c.memberIds.where((id) => id != uid).toList(),
+      createdAt: c.createdAt,
+    );
+    _emitCircles();
+  }
 }

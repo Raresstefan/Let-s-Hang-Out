@@ -17,28 +17,49 @@ bool isAllowedImageName(String name) {
 
 /// Outcome of an image pick. Exactly one of [dataUrl] or [error] is non-null.
 class PickedImage {
-  const PickedImage._({this.dataUrl, this.fileName, this.error});
+  const PickedImage._({
+    this.bytes,
+    this.dataUrl,
+    this.fileName,
+    this.contentType,
+    this.error,
+  });
 
-  /// `data:image/...;base64,...` ready to render via [CoverImage] / store in a
-  /// `*ImageUrl` field.
+  final Uint8List? bytes;
   final String? dataUrl;
   final String? fileName;
+  final String? contentType;
 
   /// A user-facing error message (wrong type / unreadable). Null on success.
   final String? error;
 
-  bool get ok => dataUrl != null;
+  bool get ok => bytes != null && dataUrl != null;
 
   static const _wrongType = 'Please choose a .png or .jpg image';
   static const _unreadable =
       "Couldn't read that image. Try clicking to browse instead.";
+  static const _tooLarge = 'Please choose an image smaller than 10 MB.';
+  static const _maxInputBytes = 10 * 1024 * 1024;
 
   static PickedImage _success(Uint8List bytes, String name) {
     final ext = name.contains('.') ? name.split('.').last : 'png';
+    final contentType = ext.toLowerCase() == 'png'
+        ? 'image/png'
+        : 'image/jpeg';
     return PickedImage._(
+      bytes: bytes,
       dataUrl: CoverImage.dataUrlFromBytes(bytes, ext),
       fileName: name,
+      contentType: contentType,
     );
+  }
+
+  static PickedImage _fromBytes(Uint8List bytes, String name) {
+    if (bytes.isEmpty) return const PickedImage._(error: _unreadable);
+    if (bytes.lengthInBytes > _maxInputBytes) {
+      return const PickedImage._(error: _tooLarge);
+    }
+    return _success(bytes, name);
   }
 
   /// Process a desktop_drop drop event into a [PickedImage]. Returns null if
@@ -50,10 +71,7 @@ class PickedImage {
       return const PickedImage._(error: _wrongType);
     }
     final bytes = await file.readAsBytes();
-    if (bytes.isEmpty) {
-      return const PickedImage._(error: _unreadable);
-    }
-    return _success(bytes, file.name);
+    return _fromBytes(bytes, file.name);
   }
 
   /// Open the file browser and process the selection. Returns null if the user
@@ -70,6 +88,6 @@ class PickedImage {
     if (bytes == null || !isAllowedImageName(file.name)) {
       return const PickedImage._(error: _wrongType);
     }
-    return _success(bytes, file.name);
+    return _fromBytes(bytes, file.name);
   }
 }

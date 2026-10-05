@@ -1,0 +1,21 @@
+# Android release signing — COPY this file to `android/key.properties` and fill in.
+# `key.properties` is git-ignored (never commit it or the keystore).
+#
+# 1. Generate an upload keystore (run once, keep the file + passwords safe forever):
+#
+#    keytool -genkey -v -keystore ~/hangout-upload-key.jks \
+#      -keyalg RSA -keysize 2048 -validity 10000 -alias upload
+#
+# 2. Fill in the values below (storeFile = absolute path to the .jks above).
+# 3. Enroll in Play App Signing when you create the app in Play Console (Google
+#    holds the app signing key; this upload key just signs uploads).
+# 4. Register the upload key's SHA-1 AND SHA-256 in the Firebase console
+#    (Project settings → your Android app → Add fingerprint) so Google Sign-In
+#    keeps working in release builds. Get them with:
+#
+#    keytool -list -v -keystore ~/hangout-upload-key.jks -alias upload
+
+storePassword=CHANGE_ME
+keyPassword=CHANGE_ME
+keyAlias=upload
+storeFile=/absolute/path/to/hangout-upload-key.jks

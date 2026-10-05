@@ -31,7 +31,7 @@
     "profile": "Profile",
     "friends": "Friends",
     "create": "Create",
-    "myActivities": "My Activities",
+    "myActivities": "Hangouts",
     "circles": "Circles"
   },
   "feed": {
@@ -61,6 +61,8 @@
       "noDescription": "No description provided",
       "going": "Who's going",
       "host": "Host",
+      "formerHost": "Former host",
+      "formerMember": "Former member",
       "you": "You",
       "whenTitle": "When",
       "whereTitle": "Where",
@@ -79,6 +81,7 @@
       "title": "Title",
       "description": "Description",
       "place": "Place suggestion",
+      "category": "Category",
       "startDate": "Start date & time",
       "coverImage": "Cover image",
       "optional": "optional"
@@ -86,7 +89,21 @@
     "create": {
       "title": "Create activity",
       "submit": "Create activity",
-      "coverHint": "Drag & drop a cover photo here"
+      "coverHint": "Drag & drop a cover photo here",
+      "categoryCover": "{category} category cover",
+      "coverFallback": "We'll use this design unless you add a photo.",
+      "coverSelected": "Your photo will be cropped to fit activity cards.",
+      "coverAdd": "Add photo",
+      "coverReplace": "Replace",
+      "coverRemove": "Remove",
+      "coverUploadFailed": "Couldn't upload the cover photo. Remove it or try again.",
+      "failed": "Couldn't create the activity. Check your connection and try again."
+    },
+    "categoryPicker": {
+      "title": "Choose a category",
+      "more": "More",
+      "searchHint": "Search categories",
+      "empty": "No categories match your search."
     },
     "validation": {
       "titleRequired": "A title is needed for creating the activity",
@@ -96,7 +113,7 @@
     }
   },
   "myActivities": {
-    "title": "My Activities",
+    "title": "Hangouts",
     "empty": "You haven't joined any activities yet.",
     "hosting": "Hosting",
     "joinedSection": "Joined"
@@ -133,7 +150,7 @@
     "invited": "Invited",
     "pendingInvites": "Pending invites",
     "createCta": "Create circle",
-    "hangoutPlanned": "Hangout planned — find it in My Activities and the circle chat."
+    "hangoutPlanned": "Hangout planned — find it in Hangouts and the circle chat."
   },
   "friends": {
     "title": "Friends",
@@ -161,6 +178,8 @@
     "title": "Profile",
     "about": "About",
     "unknown": "Someone",
+    "deletedUser": "Deleted user",
+    "deletedUserBody": "This person has deleted their account.",
     "empty": "This person hasn't added a bio or interests yet.",
     "hostRating": "{rating} · {count} hangs hosted"
   },
@@ -192,7 +211,13 @@
       "notifications": "Notifications",
       "language": "Language (EN)",
       "privacy": "Privacy",
-      "logout": "Log out"
+      "logout": "Log out",
+      "deleteAccount": "Delete account",
+      "deleteAccountConfirmTitle": "Delete your account?",
+      "deleteAccountConfirmBody": "This permanently deletes your profile, bio, and interests. This can't be undone.",
+      "deleteAccountConfirmAction": "Delete",
+      "deleteAccountError": "We couldn't delete your account. Please check your connection and try again.",
+      "deleteAccountReauthRequired": "For your security, please sign in again and repeat this to delete your account."
     }
   },
   "chat": {
@@ -201,6 +226,9 @@
     "send": "Send",
     "systemJoined": "{name} joined the activity",
     "systemPlanned": "{name} planned a hangout: {title}",
+    "systemHostLeft": "{name} has left. This hangout continues without them.",
+    "systemCreatorLeft": "{name} has left. This circle continues without them.",
+    "someone": "Someone",
     "removeMember": "Remove from chat",
     "unavailable": "This chat isn't available. You may not be a member yet, or you're offline."
   },
@@ -210,5 +238,68 @@
     "deny": "Deny",
     "reminderTitle": "Your activity starts in 2 hours",
     "reminderBody": "\"{activity}\" is coming up. Get ready!"
+  },
+  "safety": {
+    "report": "Report",
+    "reportUser": "Report {name}",
+    "reportActivity": "Report this activity",
+    "reportMessage": "Report message",
+    "reportTitle": "What's going on?",
+    "reportSubtitle": "Reports are private. The person won't know it was you.",
+    "reasons": {
+      "harassment": "Harassment or bullying",
+      "inappropriate": "Inappropriate or sexual content",
+      "spam": "Spam",
+      "scam": "Scam, fraud or fake profile",
+      "safety": "I feel unsafe / threat of harm",
+      "other": "Something else"
+    },
+    "detailsHint": "Add details (optional)",
+    "submit": "Send report",
+    "reportSent": "Thanks — our team reviews reports within 24 hours.",
+    "reportFailed": "Couldn't send the report. Check your connection and try again.",
+    "emergency": "If you're in immediate danger, contact local emergency services.",
+    "block": "Block",
+    "blockUser": "Block {name}",
+    "unblock": "Unblock",
+    "blockConfirmTitle": "Block {name}?",
+    "blockConfirmBody": "They won't be able to join your activities or send you friend requests, and you won't see their activities or messages. They won't be notified.",
+    "blocked": "{name} is blocked.",
+    "unblocked": "{name} is unblocked.",
+    "blockedBanner": "You've blocked this person.",
+    "actionFailed": "Something went wrong. Please try again.",
+    "hiddenMessage": "Message from a blocked user",
+    "removeMember": "Remove from activity",
+    "removeConfirmTitle": "Remove {name}?",
+    "removeConfirmBody": "They'll be removed from this activity and its chat, and won't be able to rejoin.",
+    "removed": "{name} was removed.",
+    "removedFromActivity": "The host removed you from this activity.",
+    "cantJoin": "You can't join this activity."
+  },
+  "legal": {
+    "rulesTitle": "Before you hang out",
+    "rulesIntro": "Hang Out is about meeting real people safely. By joining, you agree to our community rules:",
+    "rules": {
+      "respect": "Be respectful. Harassment, hate speech, bullying or threats are not tolerated.",
+      "content": "No sexual, violent, illegal or otherwise objectionable content in activities, chats, photos or your profile.",
+      "honest": "Be yourself. No fake profiles, spam, scams or advertising.",
+      "safety": "Meet in public places and tell someone where you are going."
+    },
+    "enforcement": "We have zero tolerance for objectionable content or abusive users. Use Report and Block anywhere in the app. We review reports within 24 hours and remove offending content and users.",
+    "readTerms": "Read Terms of Service",
+    "readPrivacy": "Read Privacy Policy",
+    "agreeCheckbox": "I am 18 or older and I agree to the Terms of Service and Privacy Policy, including the community rules above.",
+    "agree": "Agree and continue",
+    "decline": "Sign out",
+    "saveFailed": "Couldn't save your agreement. Check your connection and try again.",
+    "terms": "Terms of Service",
+    "privacy": "Privacy Policy",
+    "contactTitle": "Help & contact",
+    "contactBody": "Questions, safety concerns or data requests? Email us and we will get back to you.",
+    "copyEmail": "Copy email",
+    "emailCopied": "Email address copied"
+  },
+  "moderation": {
+    "blocked": "Please remove offensive language."
   }
 }

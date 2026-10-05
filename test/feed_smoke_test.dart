@@ -2,18 +2,23 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hangout/app.dart';
 import 'package:hangout/core/analytics/analytics_service.dart';
+import 'package:hangout/core/legal/legal.dart';
 import 'package:hangout/data/auth/mock_auth_service.dart';
 import 'package:hangout/data/repositories/mock_activity_repository.dart';
 import 'package:hangout/data/repositories/mock_chat_repository.dart';
+import 'package:hangout/data/repositories/mock_user_repository.dart';
 import 'package:hangout/features/feed/widgets/activity_card.dart';
 import 'package:hangout/features/feed/widgets/emoji_filter_bar.dart';
 
-/// Builds the app fully wired with mock dependencies for widget tests.
+/// Builds the app fully wired with mock dependencies for widget tests. The
+/// mock user has already accepted the current Terms so the gate is skipped.
 HangOutApp _mockApp() => HangOutApp(
       authService: MockAuthService(),
       repository: MockActivityRepository(),
       chatRepository: MockChatRepository(),
       analytics: ConsoleAnalyticsService(),
+      userRepository: MockUserRepository()
+        ..acceptTerms(MockAuthService.mockUserId, kTermsVersion),
     );
 
 void main() {

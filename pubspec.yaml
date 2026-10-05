@@ -1,7 +1,7 @@
 name: hangout
 description: "Hang Out — a social network that facilitates socialising activities."
 publish_to: 'none'
-version: 0.1.0
+version: 1.0.0+1
 
 environment:
   sdk: ^3.9.2
@@ -35,12 +35,14 @@ dependencies:
 
   # Firebase backend (project: hang-out-129b5). Used when AppConfig.useMockBackend
   # is false; the app still runs fully on mock repositories when it's true.
-  # (messaging/storage/analytics added in later passes.)
   firebase_core: ^4.10.0
+  firebase_analytics: ^12.6.0
   firebase_auth: ^6.5.2
   cloud_firestore: ^6.5.0
   google_sign_in: ^7.2.0
   share_plus: ^12.0.2
+  firebase_storage: ^13.6.0
+  image: ^4.10.1
 
 dev_dependencies:
   flutter_test:
@@ -55,6 +57,9 @@ flutter:
   assets:
     - assets/i18n/
     - assets/logo/
+    # Legal docs, viewable in-app (also published via GitHub Pages)
+    - docs/terms.md
+    - docs/privacy-policy.md
 
 flutter_launcher_icons:
   android: true

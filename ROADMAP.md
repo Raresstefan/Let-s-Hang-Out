@@ -208,3 +208,37 @@ Ordering balances impact, dependency, and the "fix the leaks first" principle.
   - `firestore.rules`: members may write the `ratings` field (field-scoped). **Owner republishes.**
   - `flutter analyze` clean. Manual-test pending (age an activity's `startAt` to the past).
   - **Next up: D — Notifications & reminders**, then E, G, H, I per the roadmap.
+- _2026-10-05_ — **Release blockers 1–3: security rules hardening.**
+  - `firestore.rules` rewritten: field-level activity updates (no hostId/title takeover, no adding
+    others, no forged likes/ratings; host can't rate own hang), circle-private hangouts, chat +
+    message membership checks, sender impersonation blocked, party-scoped list rules.
+  - System chat lines are now **structured events** (`joined`/`planned`/`hostLeft`/`creatorLeft`)
+    rendered via i18n; rules verify names/titles against real docs.
+  - Friend requests / circle invites use deterministic ids (`{from}_{to}`, `{circle}_{to}`) and are
+    deleted after accept; Discover/host-stats queries filter `circleId == null`.
+  - New `firestore.indexes.json` (activities `circleId`+`startAt`). **Owner must publish rules and
+    create the index in the console.** Verified with a throwaway emulator script (97 cases).
+- _2026-10-05_ — **Release blocker 4: user safety (report / block / remove member).**
+  - Report sheet (reason + details) for users (profile menu), activities (details ⋯ menu) and
+    messages (long-press in chat) → `reports` collection (create-only).
+  - Block / unblock from profile or chat: hides their activities, requests and search results,
+    replaces their chat messages with a placeholder, and severs friendship / pending requests.
+  - Hosts remove members from the who's-going row (activity + chat); `removedIds` blocks rejoin.
+  - Rules: `blocks`, `reports`, `removedIds`, blocked-user join/request/invite denial. **Owner
+    republishes rules** and reviews reports daily (see RELEASE_CHECKLIST).
+- _2026-10-05_ — **Store-required UGC items: terms acceptance, content filter, contact.**
+  - `TermsGate` (wraps `HomeShell`): signed-in users must accept the community rules + Terms/Privacy
+    before using the app; stored as `users/{uid}.termsVersion` (+ `termsAcceptedAt`). Bump
+    `kTermsVersion` in `lib/core/legal/legal.dart` to re-prompt everyone after material changes.
+  - `docs/terms.md` + `docs/privacy-policy.md` bundled as assets and viewable in-app
+    (`LegalDocScreen`) from the gate and Profile → Settings (Privacy Policy, Terms, Help & contact).
+  - `ContentFilter` (client-side word list, EN + RO, leet/diacritics aware) rejects public text:
+    activity title/description/place, circle name, profile name/bio and custom interests. Chat is
+    deliberately unfiltered (private conversation); Report message + Block cover it.
+  - Contact email `letshangout45@gmail.com` filled into the docs and shown in-app.
+- **Legal docs aligned with the code.** Privacy policy now discloses uploaded photos (avatar,
+  activity covers), Firebase Analytics + Storage, reports/blocks, terms acceptance, what deletion
+  keeps, and GDPR legitimate-interest basis. Minimum age raised to **18+** (terms, policy,
+  agreement checkbox; `kTermsVersion` → 2 so everyone re-accepts). Added
+  `docs/delete-account.md` (Play's web deletion URL). Advertising-ID collection disabled on
+  Android (manifest) and iOS (Podfile) so the "no ad identifiers" claim holds.

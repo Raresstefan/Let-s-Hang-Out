@@ -37,4 +37,10 @@ abstract class CircleRepository {
 
   /// Pending invites for a given [circleId] (the circle's "pending" list).
   Future<List<CircleInvite>> outgoingInvitesFor(String circleId);
+
+  /// Removes [uid] from the circle's members. A no-op-safe call: if [uid]
+  /// isn't currently a member, the circle is left unchanged. Used when a
+  /// member leaves — including a non-creator member deleting their account. A
+  /// creator is never removed this way; their circle is left intact.
+  Future<void> leaveCircle(String circleId, String uid);
 }

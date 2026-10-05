@@ -26,4 +26,15 @@ abstract class ActivityRepository {
   /// Aggregate host reputation for [hostId] from the ratings on activities they
   /// host (average + counts). Shown on profiles.
   Future<HostStats> hostStats(String hostId);
+
+  /// Removes [userId] from the activity's members (and their likedBy/ratings
+  /// entries, if present) and returns the updated activity. A no-op-safe call:
+  /// if [userId] isn't currently a member, the activity is returned unchanged.
+  /// Used when a member leaves — including a non-host member deleting their
+  /// account. A host is never removed this way; their activity is left intact.
+  Future<Activity> leaveActivity(String activityId, String userId);
+
+  /// Host-only: removes [memberId] from the activity and records them in
+  /// `removedIds` so they can't rejoin. Returns the updated activity.
+  Future<Activity> removeMember(String activityId, String memberId);
 }

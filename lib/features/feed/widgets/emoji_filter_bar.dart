@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../core/l10n/app_localizations.dart';
 import '../../../core/theme/category_style.dart';
 import '../../../domain/models/activity_category.dart';
+import '../../categories/activity_category_picker.dart';
 
 /// Horizontal row of category filter pills (emoji + label). Tapping one filters
 /// the feed to that category; the active one shows its category color. A leading
@@ -13,15 +14,18 @@ class EmojiFilterBar extends StatelessWidget {
     required this.active,
     required this.onSelected,
     required this.onClear,
+    required this.onMoreOpened,
   });
 
   final ActivityCategory? active;
   final ValueChanged<ActivityCategory> onSelected;
   final VoidCallback onClear;
+  final VoidCallback onMoreOpened;
 
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
+    final moreActive = active != null && !active!.isFeatured;
     return SizedBox(
       height: 60,
       child: ListView(
@@ -39,16 +43,35 @@ class EmojiFilterBar extends StatelessWidget {
             onTap: onClear,
           ),
           const SizedBox(width: 8),
-          for (final category in ActivityCategory.values) ...[
+          for (final category in ActivityCategory.featured) ...[
             _Pill(
               emoji: category.emoji,
-              label: l.tr('feed.filters.${category.id}'),
+              label: category.label,
               selected: category == active,
               color: CategoryStyle.color(category),
               onTap: () => onSelected(category),
             ),
             const SizedBox(width: 8),
           ],
+          _Pill(
+            emoji: moreActive ? active!.emoji : null,
+            label: moreActive
+                ? active!.label
+                : l.tr('activity.categoryPicker.more'),
+            selected: moreActive,
+            color: moreActive
+                ? CategoryStyle.color(active!)
+                : Theme.of(context).colorScheme.secondary,
+            onTap: () async {
+              onMoreOpened();
+              final selected = await showActivityCategoryPicker(
+                context,
+                selected: active,
+              );
+              if (selected != null) onSelected(selected);
+            },
+          ),
+          const SizedBox(width: 8),
         ],
       ),
     );

@@ -43,7 +43,8 @@ class MockActivityRepository implements ActivityRepository {
       Activity(
         id: 'act-tennis',
         title: 'Tennis match — 2 hours 🎾',
-        description: 'Looking for one player. Intermediate level. Bring rackets!',
+        description:
+            'Looking for one player. Intermediate level. Bring rackets!',
         placeSuggestion: 'City Sports Park, Court 3',
         startAt: now.add(const Duration(days: 1, hours: 2)),
         hostId: 'user-radu',
@@ -128,9 +129,13 @@ class MockActivityRepository implements ActivityRepository {
     final idx = _activities.indexWhere((a) => a.id == activityId);
     if (idx == -1) throw StateError('Activity not found: $activityId');
     final activity = _activities[idx];
+    if (activity.isRemoved(userId)) {
+      throw StateError('Removed from activity: $activityId');
+    }
     if (!activity.isMember(userId)) {
-      final updated =
-          activity.copyWith(memberIds: [...activity.memberIds, userId]);
+      final updated = activity.copyWith(
+        memberIds: [...activity.memberIds, userId],
+      );
       _activities[idx] = updated;
       return updated;
     }
@@ -153,7 +158,10 @@ class MockActivityRepository implements ActivityRepository {
 
   @override
   Future<Activity> rateActivity(
-      String activityId, String userId, int rating) async {
+    String activityId,
+    String userId,
+    int rating,
+  ) async {
     await _latency();
     final idx = _activities.indexWhere((a) => a.id == activityId);
     if (idx == -1) throw StateError('Activity not found: $activityId');
@@ -182,6 +190,35 @@ class MockActivityRepository implements ActivityRepository {
       ratingCount: count,
       hostedCount: hosted.length,
     );
+  }
+
+  @override
+  Future<Activity> leaveActivity(String activityId, String userId) async {
+    await _latency();
+    final idx = _activities.indexWhere((a) => a.id == activityId);
+    if (idx == -1) throw StateError('Activity not found: $activityId');
+    final activity = _activities[idx];
+    final updated = activity.copyWith(
+      memberIds: activity.memberIds.where((id) => id != userId).toList(),
+      likedBy: activity.likedBy.where((id) => id != userId).toList(),
+      ratings: {...activity.ratings}..remove(userId),
+    );
+    _activities[idx] = updated;
+    return updated;
+  }
+
+  @override
+  Future<Activity> removeMember(String activityId, String memberId) async {
+    await _latency();
+    final idx = _activities.indexWhere((a) => a.id == activityId);
+    if (idx == -1) throw StateError('Activity not found: $activityId');
+    final activity = _activities[idx];
+    final updated = activity.copyWith(
+      memberIds: activity.memberIds.where((id) => id != memberId).toList(),
+      removedIds: {...activity.removedIds, memberId}.toList(),
+    );
+    _activities[idx] = updated;
+    return updated;
   }
 
   Future<void> _latency() =>

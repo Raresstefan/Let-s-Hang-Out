@@ -5,9 +5,11 @@ activities together — drinks, tennis, coffee, food, whatever. It's built to re
 social anxiety of meeting new people: browse activities others created, join with one tap,
 and land straight in a group chat to plan.
 
-> Built with Flutter. This first version runs entirely on **mock in-memory data**, so it
-> launches with zero backend setup. The whole app is coded against repository abstractions,
-> so swapping in Firebase later touches only the composition root — not the screens.
+> Built with Flutter. The app runs on a live **Firebase** backend by default
+> (Google Sign-In + Cloud Firestore; project `hang-out-129b5`) — set via
+> `useMockBackend = false` in `lib/core/config/app_config.dart`. The whole app is
+> coded against repository abstractions, so it can still run fully on **mock
+> in-memory data** with zero backend setup by flipping that flag to `true`.
 
 ---
 
@@ -199,7 +201,7 @@ lib/
 ├── app.dart                        # MaterialApp + Provider dependency graph
 ├── core/
 │   ├── config/app_config.dart      # useMockBackend flag
-│   ├── analytics/analytics_service.dart   # Hang:* event abstraction + console impl
+│   ├── analytics/                 # Event abstraction + Firebase/console impls
 │   ├── l10n/app_localizations.dart # JSON-backed dot-notation localization
 │   └── theme/app_theme.dart        # App theme (warm coral palette)
 ├── domain/models/                  # Activity, AppUser, ActivityCategory
@@ -223,17 +225,24 @@ test/feed_smoke_test.dart           # boots the app, asserts feed + filter work
 ## Analytics convention
 
 Call sites never touch a vendor SDK — they call typed helpers on `AnalyticsService`, which
-enforces the naming pattern and de-duplication:
+enforces stable Firebase-compatible names and de-duplication:
 
 | What | Event | Helper |
 |------|-------|--------|
-| Activity rendered (once each) | `Hang:${activity_title}:OnLoad` | `analytics.activityOnLoad(title, activityId: id)` |
-| Button click | `Hang:${button_name}:Clicked` | `analytics.buttonClicked('join_activity')` |
-| Input typing (once per input) | `Hang:${input_name}:Typing` | `analytics.inputTyping('activity_title')` |
-| Service success | `Hang:${action}:Success` | `analytics.actionSuccess('createActivity')` |
+| Content rendered (once each) | `content_viewed` (`content_name`, `activity_id`) | `analytics.activityOnLoad(title, activityId: id)` |
+| Button click | `button_clicked` (`button_name`) | `analytics.buttonClicked('join_activity')` |
+| Input typing (once per input) | `input_started` (`input_name`) | `analytics.inputTyping('activity_title')` |
+| Service success | `action_succeeded` (`action_name`) | `analytics.actionSuccess('createActivity')` |
 
-In debug mode events print to the console (`📊 [analytics] …`). To ship to a real backend,
-implement `AnalyticsService` (e.g. `FirebaseAnalyticsService`) and pass it in `main.dart`.
+Firebase mode sends events through `FirebaseAnalyticsService`; mock mode prints them to the
+console. To inspect Android events in Firebase **Analytics → DebugView**, run:
+
+```bash
+adb shell setprop debug.firebase.analytics.app com.hangout.hangout
+```
+
+Disable DebugView routing with
+`adb shell setprop debug.firebase.analytics.app .none`.
 
 ---
 
@@ -263,10 +272,8 @@ notifications — with a generous free tier and pay-as-you-go scaling.
 1. `flutter pub add firebase_core firebase_auth cloud_firestore firebase_messaging firebase_storage firebase_analytics`
 2. `dart pub global activate flutterfire_cli && flutterfire configure` (generates
    `firebase_options.dart`, `google-services.json`, `GoogleService-Info.plist`).
-3. Implement `FirestoreActivityRepository` against the existing `ActivityRepository`
-   contract, and a `FirebaseAnalyticsService` against `AnalyticsService`.
-4. In `lib/core/config/app_config.dart` set `useMockBackend = false` and wire the real impls
-   in `main.dart`. No screen code changes.
+3. In `lib/core/config/app_config.dart` set `useMockBackend = false`; `main.dart` then wires
+   the Firestore repositories and `FirebaseAnalyticsService`. No screen code changes.
 
 ---
 

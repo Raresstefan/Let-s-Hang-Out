@@ -1,6 +1,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Required for Firebase Auth / Firestore and Google Sign-In network calls.
+         Flutter injects this automatically in debug; declare it explicitly so it
+         is present in release builds. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <application
-        android:label="hangout"
+        android:label="Hang Out"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
@@ -25,6 +29,10 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <!-- The privacy policy states no advertising identifiers are collected. -->
+        <meta-data
+            android:name="google_analytics_adid_collection_enabled"
+            android:value="false" />
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

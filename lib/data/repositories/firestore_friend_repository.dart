@@ -1,5 +1,4 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:uuid/uuid.dart';
 
 import '../../domain/models/app_user.dart';
 import '../../domain/models/friend_request.dart';
@@ -20,7 +19,6 @@ class FirestoreFriendRepository implements FriendRepository {
       : _db = db ?? FirebaseFirestore.instance;
 
   final FirebaseFirestore _db;
-  final _uuid = const Uuid();
 
   CollectionReference<Map<String, dynamic>> get _requests =>
       _db.collection('friend_requests');
@@ -36,8 +34,13 @@ class FirestoreFriendRepository implements FriendRepository {
     // Guard against duplicates: skip if a pending request exists either way, or
     // if they're already friends.
     if (await statusBetween(fromId, toId) != FriendshipStatus.none) return;
-    final id = _uuid.v4();
-    await _requests.doc(id).set({
+    // Deterministic id so the rules can verify an accepted request before
+    // allowing the cross-user `friendIds` write. Clear any stale (non-pending)
+    // doc left from an earlier handshake so the create isn't an update.
+    final doc = _requests.doc(requestId(fromId, toId));
+    final existing = await doc.get();
+    if (existing.exists) await doc.delete();
+    await doc.set({
       'fromId': fromId,
       'toId': toId,
       'status': 'pending',
@@ -57,6 +60,8 @@ class FirestoreFriendRepository implements FriendRepository {
     await _users.doc(them).set({
       'friendIds': FieldValue.arrayUnion([me]),
     }, SetOptions(merge: true));
+    // Handshake done; remove it so a future re-request can be created fresh.
+    await _requests.doc(req.id).delete();
   }
 
   @override
@@ -71,6 +76,9 @@ class FirestoreFriendRepository implements FriendRepository {
       'friendIds': FieldValue.arrayRemove([me]),
     }, SetOptions(merge: true));
   }
+
+  /// `friend_requests/{fromId}_{toId}` — the rules rely on this shape.
+  static String requestId(String fromId, String toId) => '${fromId}_$toId';
 
   @override
   Future<void> declineRequest(FriendRequest req) async {

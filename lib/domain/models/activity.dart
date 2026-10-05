@@ -16,6 +16,7 @@ class Activity {
     this.isSuggested = false,
     this.circleId,
     this.ratings = const {},
+    this.removedIds = const [],
   });
 
   final String id;
@@ -42,6 +43,12 @@ class Activity {
   /// their recap, so we stop prompting them.
   final Map<String, int> ratings;
 
+  /// Users the host removed. They can't rejoin and the activity is hidden
+  /// from their feed.
+  final List<String> removedIds;
+
+  bool isRemoved(String userId) => removedIds.contains(userId);
+
   int get enrolledCount => memberIds.length;
 
   /// Whether [userId] has already rated/recapped this activity.
@@ -58,6 +65,8 @@ class Activity {
     List<String>? memberIds,
     List<String>? likedBy,
     Map<String, int>? ratings,
+    List<String>? removedIds,
+    String? coverImageUrl,
   }) =>
       Activity(
         id: id,
@@ -67,11 +76,12 @@ class Activity {
         startAt: startAt,
         hostId: hostId,
         category: category,
-        coverImageUrl: coverImageUrl,
+        coverImageUrl: coverImageUrl ?? this.coverImageUrl,
         memberIds: memberIds ?? this.memberIds,
         likedBy: likedBy ?? this.likedBy,
         isSuggested: isSuggested,
         circleId: circleId,
         ratings: ratings ?? this.ratings,
+        removedIds: removedIds ?? this.removedIds,
       );
 }

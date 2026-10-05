@@ -1,6 +1,9 @@
 # Firebase iOS SDK (firebase_core 4.x / cloud_firestore 6.x) requires iOS 15+.
 platform :ios, '15.0'
 
+# The privacy policy states no advertising identifiers (IDFA) are collected.
+$FirebaseAnalyticsWithoutAdIdSupport = true
+
 # CocoaPods analytics sends network stats synchronously affecting flutter build latency.
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
 

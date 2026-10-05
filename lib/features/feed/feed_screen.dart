@@ -129,6 +129,8 @@ class _FeedScreenState extends State<FeedScreen> {
               active: controller.activeFilter,
               onSelected: controller.toggleFilter,
               onClear: controller.clearFilter,
+              onMoreOpened: () =>
+                  analytics.buttonClicked('open_feed_category_picker'),
             ),
             if (controller.recapCandidate != null &&
                 !_dismissedRecaps.contains(controller.recapCandidate!.id))

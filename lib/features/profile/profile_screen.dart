@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/analytics/analytics_service.dart';
 import '../../core/l10n/app_localizations.dart';
+import '../../core/legal/legal.dart';
+import '../../core/moderation/content_filter.dart';
 import '../../core/theme/app_theme.dart';
+import '../../data/account/account_deletion_service.dart';
 import '../../data/auth/auth_service.dart';
 import '../../data/repositories/activity_repository.dart';
 import '../../data/repositories/user_repository.dart';
@@ -11,6 +15,7 @@ import '../../domain/interests/interest_catalog.dart';
 import '../../domain/models/activity.dart';
 import '../../domain/models/app_user.dart';
 import '../../domain/models/host_stats.dart';
+import '../legal/legal_doc_screen.dart';
 import 'widgets/avatar_drop_zone.dart';
 
 /// The user's profile: an editable identity (avatar / name / handle / bio), a
@@ -41,6 +46,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
   int _hosted = 0;
   int _friends = 0;
   HostStats _hostStats = const HostStats();
+
+  // True while deleteAccount() is in flight. Blocks the screen with a spinner
+  // so the (possibly slow) redirect to the sign-in screen never looks like a
+  // frozen/no-op tap — the auth gate swap can lag a beat behind the network
+  // call completing.
+  bool _deletingAccount = false;
 
   AnalyticsService get _analytics => context.read<AnalyticsService>();
 
@@ -90,13 +101,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final uid = context.read<AuthService>().currentUserId;
     if (uid == null) return;
     try {
-      await context.read<UserRepository>().upsertProfile(AppUser(
-            id: uid,
-            displayName: _name,
-            avatarUrl: _avatarUrl,
-            bio: _bio,
-            interests: _interests.toList(),
-          ));
+      await context.read<UserRepository>().upsertProfile(
+        AppUser(
+          id: uid,
+          displayName: _name,
+          avatarUrl: _avatarUrl,
+          bio: _bio,
+          interests: _interests.toList(),
+        ),
+      );
     } catch (_) {
       // Ignore — a later save / sign-in re-syncs.
     }
@@ -109,10 +122,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => _InterestsSheet(
-        initial: _interests,
-        analytics: _analytics,
-      ),
+      builder: (_) =>
+          _InterestsSheet(initial: _interests, analytics: _analytics),
     );
     if (result == null) return;
     setState(() {
@@ -131,7 +142,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final uid = context.read<AuthService>().currentUserId;
     if (uid == null) return;
     try {
-      final mine = await context.read<ActivityRepository>().fetchMyActivities(uid);
+      final mine = await context.read<ActivityRepository>().fetchMyActivities(
+        uid,
+      );
       if (!mounted) return;
       var hosted = 0;
       var joined = 0;
@@ -161,11 +174,126 @@ class _ProfileScreenState extends State<ProfileScreen> {
     await context.read<AuthService>().signOut();
   }
 
+  /// Confirms, then permanently deletes the account via
+  /// [AccountDeletionService], which cleans up everything the user
+  /// hosted/created/joined (activities, circles, chats, friendships) before
+  /// deleting the Firebase auth identity itself.
+  Future<void> _deleteAccount() async {
+    _analytics.buttonClicked('settings_delete_account');
+    final l = AppLocalizations.of(context);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(l.tr('profile.settings.deleteAccountConfirmTitle')),
+        content: Text(l.tr('profile.settings.deleteAccountConfirmBody')),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text(l.tr('common.cancel')),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(ctx).colorScheme.error,
+            ),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text(l.tr('profile.settings.deleteAccountConfirmAction')),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _deletingAccount = true);
+    final auth = context.read<AuthService>();
+    final deletion = context.read<AccountDeletionService>();
+    final uid = auth.currentUserId;
+    try {
+      if (uid != null) {
+        await deletion.deleteAccountAndData(uid);
+      } else {
+        await auth.deleteAccount();
+      }
+      _analytics.actionSuccess('deleteAccount');
+      // Deliberately leave _deletingAccount true and don't call setState here:
+      // the auth gate in app.dart is about to pop this screen off the stack
+      // (it was reached via Navigator.push) and swap to SignInScreen, so the
+      // spinner stays up until that happens instead of flashing back to the
+      // profile UI.
+    } on AccountDeletionRequiresRecentLogin {
+      // Session too old for this sensitive op. Sign out so the next sign-in
+      // is fresh — the user can then retry immediately and it'll succeed
+      // without any re-auth prompt mid-flow.
+      await auth.signOut();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(l.tr('profile.settings.deleteAccountReauthRequired')),
+        ),
+      );
+      // Signed out too (just via a different path) — same reasoning as above.
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _deletingAccount = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(l.tr('profile.settings.deleteAccountError'))),
+      );
+    }
+  }
+
   void _comingSoon(String key) {
     _analytics.buttonClicked('settings_$key');
     final l = AppLocalizations.of(context);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(l.tr('profile.comingSoon'))),
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(l.tr('profile.comingSoon'))));
+  }
+
+  void _openLegal(String key, String asset) {
+    _analytics.buttonClicked('settings_$key');
+    LegalDocScreen.open(context, AppLocalizations.of(context).tr('legal.$key'),
+        asset);
+  }
+
+  Future<void> _contact() async {
+    _analytics.buttonClicked('settings_contact');
+    final l = AppLocalizations.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(l.tr('legal.contactTitle')),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(l.tr('legal.contactBody')),
+            const SizedBox(height: 12),
+            Text(
+              kContactEmail,
+              style: Theme.of(ctx)
+                  .textTheme
+                  .titleMedium
+                  ?.copyWith(fontWeight: FontWeight.w700),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(l.tr('common.done')),
+          ),
+          FilledButton.icon(
+            icon: const Icon(Icons.copy_rounded, size: 18),
+            label: Text(l.tr('legal.copyEmail')),
+            onPressed: () async {
+              await Clipboard.setData(const ClipboardData(text: kContactEmail));
+              if (ctx.mounted) Navigator.pop(ctx);
+              messenger.showSnackBar(
+                  SnackBar(content: Text(l.tr('legal.emailCopied'))));
+            },
+          ),
+        ],
+      ),
     );
   }
 
@@ -175,11 +303,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => _EditProfileSheet(
-        name: _name,
-        bio: _bio,
-        analytics: _analytics,
-      ),
+      builder: (_) =>
+          _EditProfileSheet(name: _name, bio: _bio, analytics: _analytics),
     );
     if (result == null) return;
     setState(() {
@@ -197,183 +322,248 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     return Scaffold(
       appBar: AppBar(title: Text(l.tr('profile.title'))),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+      body: Stack(
         children: [
-          // ---- Header ----
-          Center(
-            child: AvatarDropZone(
-              initial: _name.isNotEmpty ? _name[0].toUpperCase() : '?',
-              dataUrl: _avatarUrl,
-              onChanged: (url) {
-                _analytics.buttonClicked('profile_avatar_upload');
-                setState(() => _avatarUrl = url);
-              },
-            ),
-          ),
-          const SizedBox(height: 14),
-          Center(
-            child: Text(_name,
-                style: theme.textTheme.headlineSmall, textAlign: TextAlign.center),
-          ),
-          Center(
-            child: Text(
-              l.tr('profile.handle', {'handle': _handle}),
-              style: theme.textTheme.bodyMedium
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-            ),
-          ),
-          if (_hostStats.hasRating) ...[
-            const SizedBox(height: 10),
-            Center(
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                decoration: BoxDecoration(
-                  color: AppTheme.seed.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(20),
+          ListView(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+            children: [
+              // ---- Header ----
+              Center(
+                child: AvatarDropZone(
+                  initial: _name.isNotEmpty ? _name[0].toUpperCase() : '?',
+                  dataUrl: _avatarUrl,
+                  onChanged: (url) {
+                    _analytics.buttonClicked('profile_avatar_upload');
+                    setState(() => _avatarUrl = url);
+                  },
                 ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.star_rounded,
-                        size: 18, color: AppTheme.seed),
-                    const SizedBox(width: 4),
-                    Text(
-                      l.tr('userProfile.hostRating', {
-                        'rating': _hostStats.averageRating.toStringAsFixed(1),
-                        'count': _hostStats.hostedCount,
-                      }),
-                      style: const TextStyle(
+              ),
+              const SizedBox(height: 14),
+              Center(
+                child: Text(
+                  _name,
+                  style: theme.textTheme.headlineSmall,
+                  textAlign: TextAlign.center,
+                ),
+              ),
+              Center(
+                child: Text(
+                  l.tr('profile.handle', {'handle': _handle}),
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+              if (_hostStats.hasRating) ...[
+                const SizedBox(height: 10),
+                Center(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppTheme.seed.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.star_rounded,
+                          size: 18,
                           color: AppTheme.seed,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 13),
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          l.tr('userProfile.hostRating', {
+                            'rating': _hostStats.averageRating.toStringAsFixed(
+                              1,
+                            ),
+                            'count': _hostStats.hostedCount,
+                          }),
+                          style: const TextStyle(
+                            color: AppTheme.seed,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 12),
+              Center(
+                child: Text(
+                  _bio.isEmpty ? l.tr('profile.bioPlaceholder') : _bio,
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: _bio.isEmpty
+                        ? theme.colorScheme.onSurfaceVariant
+                        : theme.colorScheme.onSurface,
+                    height: 1.35,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Center(
+                child: OutlinedButton.icon(
+                  onPressed: _editProfile,
+                  icon: const Icon(Icons.edit_outlined, size: 18),
+                  label: Text(l.tr('profile.editProfile')),
+                  style: OutlinedButton.styleFrom(
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(30),
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 22,
+                      vertical: 12,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              // ---- Compact stat strip (non-clickable) ----
+              _SoftCard(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 18),
+                  child: Row(
+                    children: [
+                      _Stat(
+                        value: _joined,
+                        label: l.tr('profile.stats.joined'),
+                      ),
+                      const _StatDivider(),
+                      _Stat(
+                        value: _hosted,
+                        label: l.tr('profile.stats.hosted'),
+                      ),
+                      const _StatDivider(),
+                      _Stat(
+                        value: _friends,
+                        label: l.tr('profile.stats.friends'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              // ---- Interests ----
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    l.tr('profile.interests'),
+                    style: theme.textTheme.titleMedium,
+                  ),
+                  TextButton.icon(
+                    onPressed: _editInterests,
+                    icon: Icon(
+                      _interests.isEmpty
+                          ? Icons.add_rounded
+                          : Icons.edit_outlined,
+                      size: 18,
+                    ),
+                    label: Text(
+                      l.tr(
+                        _interests.isEmpty
+                            ? 'profile.interestsAdd'
+                            : 'profile.interestsEdit',
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              if (_interests.isEmpty)
+                _InterestsEmptyPrompt(
+                  text: l.tr('profile.interestsEmpty'),
+                  onTap: _editInterests,
+                )
+              else
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final id in _interests)
+                      _InterestChip(
+                        interest: InterestCatalog.resolve(id),
+                        selected: true,
+                        onTap: _editInterests,
+                      ),
+                  ],
+                ),
+              const SizedBox(height: 28),
+
+              // ---- Settings ----
+              Text(
+                l.tr('profile.settings.title'),
+                style: theme.textTheme.titleMedium,
+              ),
+              const SizedBox(height: 12),
+              _SoftCard(
+                child: Column(
+                  children: [
+                    _SettingsTile(
+                      icon: Icons.notifications_none_rounded,
+                      label: l.tr('profile.settings.notifications'),
+                      onTap: () => _comingSoon('notifications'),
+                    ),
+                    const Divider(height: 1, indent: 56),
+                    _SettingsTile(
+                      icon: Icons.language_rounded,
+                      label: l.tr('profile.settings.language'),
+                      onTap: () => _comingSoon('language'),
+                    ),
+                    const Divider(height: 1, indent: 56),
+                    _SettingsTile(
+                      icon: Icons.lock_outline_rounded,
+                      label: l.tr('legal.privacy'),
+                      onTap: () => _openLegal('privacy', kPrivacyAsset),
+                    ),
+                    const Divider(height: 1, indent: 56),
+                    _SettingsTile(
+                      icon: Icons.description_outlined,
+                      label: l.tr('legal.terms'),
+                      onTap: () => _openLegal('terms', kTermsAsset),
+                    ),
+                    const Divider(height: 1, indent: 56),
+                    _SettingsTile(
+                      icon: Icons.help_outline_rounded,
+                      label: l.tr('legal.contactTitle'),
+                      onTap: _contact,
+                    ),
+                    const Divider(height: 1, indent: 56),
+                    _SettingsTile(
+                      icon: Icons.logout_rounded,
+                      label: l.tr('profile.settings.logout'),
+                      danger: true,
+                      onTap: _logout,
+                    ),
+                    const Divider(height: 1, indent: 56),
+                    _SettingsTile(
+                      icon: Icons.delete_outline_rounded,
+                      label: l.tr('profile.settings.deleteAccount'),
+                      danger: true,
+                      onTap: _deletingAccount ? null : _deleteAccount,
                     ),
                   ],
                 ),
               ),
-            ),
-          ],
-          const SizedBox(height: 12),
-          Center(
-            child: Text(
-              _bio.isEmpty ? l.tr('profile.bioPlaceholder') : _bio,
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: _bio.isEmpty
-                    ? theme.colorScheme.onSurfaceVariant
-                    : theme.colorScheme.onSurface,
-                height: 1.35,
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          Center(
-            child: OutlinedButton.icon(
-              onPressed: _editProfile,
-              icon: const Icon(Icons.edit_outlined, size: 18),
-              label: Text(l.tr('profile.editProfile')),
-              style: OutlinedButton.styleFrom(
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(30)),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
-              ),
-            ),
-          ),
-          const SizedBox(height: 24),
-
-          // ---- Compact stat strip (non-clickable) ----
-          _SoftCard(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 18),
-              child: Row(
-                children: [
-                  _Stat(value: _joined, label: l.tr('profile.stats.joined')),
-                  const _StatDivider(),
-                  _Stat(value: _hosted, label: l.tr('profile.stats.hosted')),
-                  const _StatDivider(),
-                  _Stat(value: _friends, label: l.tr('profile.stats.friends')),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 24),
-
-          // ---- Interests ----
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(l.tr('profile.interests'),
-                  style: theme.textTheme.titleMedium),
-              TextButton.icon(
-                onPressed: _editInterests,
-                icon: Icon(
-                    _interests.isEmpty
-                        ? Icons.add_rounded
-                        : Icons.edit_outlined,
-                    size: 18),
-                label: Text(l.tr(_interests.isEmpty
-                    ? 'profile.interestsAdd'
-                    : 'profile.interestsEdit')),
-              ),
             ],
           ),
-          const SizedBox(height: 4),
-          if (_interests.isEmpty)
-            _InterestsEmptyPrompt(
-              text: l.tr('profile.interestsEmpty'),
-              onTap: _editInterests,
-            )
-          else
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final id in _interests)
-                  _InterestChip(
-                    interest: InterestCatalog.resolve(id),
-                    selected: true,
-                    onTap: _editInterests,
-                  ),
-              ],
+          if (_deletingAccount)
+            Positioned.fill(
+              child: ColoredBox(
+                color: Colors.black.withValues(alpha: 0.35),
+                child: const Center(
+                  child: CircularProgressIndicator(color: Colors.white),
+                ),
+              ),
             ),
-          const SizedBox(height: 28),
-
-          // ---- Settings ----
-          Text(l.tr('profile.settings.title'),
-              style: theme.textTheme.titleMedium),
-          const SizedBox(height: 12),
-          _SoftCard(
-            child: Column(
-              children: [
-                _SettingsTile(
-                  icon: Icons.notifications_none_rounded,
-                  label: l.tr('profile.settings.notifications'),
-                  onTap: () => _comingSoon('notifications'),
-                ),
-                const Divider(height: 1, indent: 56),
-                _SettingsTile(
-                  icon: Icons.language_rounded,
-                  label: l.tr('profile.settings.language'),
-                  onTap: () => _comingSoon('language'),
-                ),
-                const Divider(height: 1, indent: 56),
-                _SettingsTile(
-                  icon: Icons.lock_outline_rounded,
-                  label: l.tr('profile.settings.privacy'),
-                  onTap: () => _comingSoon('privacy'),
-                ),
-                const Divider(height: 1, indent: 56),
-                _SettingsTile(
-                  icon: Icons.logout_rounded,
-                  label: l.tr('profile.settings.logout'),
-                  danger: true,
-                  onTap: _logout,
-                ),
-              ],
-            ),
-          ),
         ],
       ),
     );
@@ -412,9 +602,12 @@ class _Stat extends StatelessWidget {
         children: [
           Text('$value', style: theme.textTheme.headlineSmall),
           const SizedBox(height: 2),
-          Text(label,
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+          Text(
+            label,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
         ],
       ),
     );
@@ -511,12 +704,15 @@ class _InterestsEmptyPrompt extends StatelessWidget {
             Expanded(
               child: Text(
                 text,
-                style: theme.textTheme.bodyMedium
-                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
               ),
             ),
-            Icon(Icons.chevron_right_rounded,
-                color: theme.colorScheme.onSurfaceVariant),
+            Icon(
+              Icons.chevron_right_rounded,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
           ],
         ),
       ),
@@ -563,8 +759,9 @@ class _InterestsSheetState extends State<_InterestsSheet> {
           controller: controller,
           autofocus: true,
           textCapitalization: TextCapitalization.words,
-          decoration:
-              InputDecoration(hintText: l.tr('profile.interestsOtherHint')),
+          decoration: InputDecoration(
+            hintText: l.tr('profile.interestsOtherHint'),
+          ),
           onSubmitted: (v) => Navigator.of(ctx).pop(v),
         ),
         actions: [
@@ -581,6 +778,12 @@ class _InterestsSheetState extends State<_InterestsSheet> {
     );
     final cleaned = text?.trim() ?? '';
     if (cleaned.isEmpty) return;
+    if (ContentFilter.hasBlocked(cleaned)) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(l.tr('moderation.blocked'))));
+      return;
+    }
     // Store custom interests as a normalized id so duplicates collapse.
     final id = cleaned.toLowerCase().replaceAll(RegExp(r'\s+'), '_');
     setState(() => _selected.add(id));
@@ -621,13 +824,17 @@ class _InterestsSheetState extends State<_InterestsSheet> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(l.tr('profile.interestsTitle'),
-                            style: theme.textTheme.titleLarge),
                         Text(
-                          l.tr('profile.interestsSubtitle',
-                              {'count': _selected.length}),
+                          l.tr('profile.interestsTitle'),
+                          style: theme.textTheme.titleLarge,
+                        ),
+                        Text(
+                          l.tr('profile.interestsSubtitle', {
+                            'count': _selected.length,
+                          }),
                           style: theme.textTheme.bodySmall?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant),
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
                         ),
                       ],
                     ),
@@ -644,9 +851,12 @@ class _InterestsSheetState extends State<_InterestsSheet> {
                   for (final group in InterestCatalog.groups) ...[
                     Padding(
                       padding: const EdgeInsets.only(top: 8, bottom: 10),
-                      child: Text(group.title,
-                          style: theme.textTheme.titleSmall?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant)),
+                      child: Text(
+                        group.title,
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
                     ),
                     Wrap(
                       spacing: 8,
@@ -665,9 +875,12 @@ class _InterestsSheetState extends State<_InterestsSheet> {
                   // Your own / custom interests + the add button.
                   Padding(
                     padding: const EdgeInsets.only(top: 8, bottom: 10),
-                    child: Text(l.tr('profile.interestsYourOwn'),
-                        style: theme.textTheme.titleSmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant)),
+                    child: Text(
+                      l.tr('profile.interestsYourOwn'),
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
                   ),
                   Wrap(
                     spacing: 8,
@@ -759,7 +972,7 @@ class _SettingsTile extends StatelessWidget {
 
   final IconData icon;
   final String label;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
   final bool danger;
 
   @override
@@ -803,6 +1016,18 @@ class _EditProfileSheet extends StatefulWidget {
 class _EditProfileSheetState extends State<_EditProfileSheet> {
   late final _name = TextEditingController(text: widget.name);
   late final _bio = TextEditingController(text: widget.bio);
+  String? _error;
+
+  void _save() {
+    final name = _name.text.trim();
+    final bio = _bio.text.trim();
+    if (ContentFilter.hasBlocked(name) || ContentFilter.hasBlocked(bio)) {
+      setState(
+          () => _error = AppLocalizations.of(context).tr('moderation.blocked'));
+      return;
+    }
+    Navigator.of(context).pop(_ProfileEdits(name, bio));
+  }
 
   @override
   void dispose() {
@@ -838,8 +1063,10 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                 ),
               ),
             ),
-            Text(l.tr('profile.editProfile'),
-                style: Theme.of(context).textTheme.titleLarge),
+            Text(
+              l.tr('profile.editProfile'),
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
             const SizedBox(height: 16),
             TextField(
               controller: _name,
@@ -852,14 +1079,14 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
               controller: _bio,
               maxLines: 3,
               onChanged: (_) => widget.analytics.inputTyping('profile_bio'),
-              decoration:
-                  InputDecoration(hintText: l.tr('profile.bioPlaceholder')),
+              decoration: InputDecoration(
+                hintText: l.tr('profile.bioPlaceholder'),
+                errorText: _error,
+              ),
             ),
             const SizedBox(height: 20),
             FilledButton(
-              onPressed: () => Navigator.of(context).pop(
-                _ProfileEdits(_name.text.trim(), _bio.text.trim()),
-              ),
+              onPressed: _save,
               child: Text(l.tr('common.save')),
             ),
           ],

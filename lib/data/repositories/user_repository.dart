@@ -24,4 +24,15 @@ abstract class UserRepository {
   /// Fetches the profiles for [ids]. Missing ids are simply absent from the
   /// result — callers fall back to an initial avatar for those.
   Future<List<AppUser>> fetchProfiles(List<String> ids);
+
+  /// The community-rules/terms version [id] last accepted (0 = never).
+  Future<int> acceptedTermsVersion(String id);
+
+  /// Records that [id] accepted terms [version] (with a server timestamp).
+  Future<void> acceptTerms(String id, int version);
+
+  /// Deletes the stored profile for [id]. Used when the user deletes their
+  /// account; does not touch activities/chats/friendships owned by other
+  /// users — those simply keep referencing the now-deleted uid.
+  Future<void> deleteProfile(String id);
 }

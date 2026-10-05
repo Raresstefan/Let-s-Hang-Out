@@ -5,8 +5,9 @@ import '../../domain/models/message.dart';
 /// lazily when the activity reaches 2 members (see [FeedController.join]).
 abstract class ChatRepository {
   /// Create the chat for [activityId] with [memberIds] if it doesn't exist
-  /// (idempotent — safe to call again on a re-join or race).
-  Future<void> ensureChat(
+  /// (idempotent — safe to call again on a re-join or race). Returns true if
+  /// this call created it.
+  Future<bool> ensureChat(
     String activityId, {
     required String title,
     required List<String> memberIds,
@@ -35,16 +36,29 @@ abstract class ChatRepository {
     required String text,
   });
 
-  /// Posts a system line (e.g. "X joined the activity") to the chat. Rendered
-  /// distinctly (centered, muted) and does not become the chat-list preview.
-  /// [actorId] is the acting user's uid — used only to satisfy the message
-  /// create rule (membership + senderId); rendering ignores it for system lines.
+  /// Posts a structured system line (e.g. "X joined the activity") to the
+  /// chat. Rendered distinctly (centered, muted) from [event] + [subjectName]
+  /// (+ [title]) and does not become the chat-list preview.
+  ///
+  /// [actorId] is the acting user's uid (the message sender). [subjectId] is
+  /// who the line is about and [subjectName] MUST be that user's stored
+  /// profile `displayName` — the security rules verify it, so it can't be
+  /// spoofed. For [SystemEvent.planned], [activityId] + [title] must match the
+  /// circle hangout the actor hosts.
   Future<void> sendSystemMessage(
-    String activityId, {
+    String chatId, {
     required String actorId,
-    required String text,
+    required SystemEvent event,
+    required String subjectId,
+    required String subjectName,
+    String? title,
+    String? activityId,
   });
 
   /// The chat for an activity, or null if none exists yet (<2 members).
   Future<Chat?> chatFor(String activityId);
+
+  /// Removes [userId] from the chat's members (no-op if the chat is absent or
+  /// the user isn't a member). Mirrors [addMember].
+  Future<void> removeMember(String activityId, String userId);
 }

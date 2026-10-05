@@ -9,7 +9,7 @@ import 'user_repository.dart';
 /// only hold uids).
 class FirestoreUserRepository implements UserRepository {
   FirestoreUserRepository([FirebaseFirestore? db])
-      : _db = db ?? FirebaseFirestore.instance;
+    : _db = db ?? FirebaseFirestore.instance;
 
   final FirebaseFirestore _db;
 
@@ -66,11 +66,29 @@ class FirestoreUserRepository implements UserRepository {
         i,
         i + _whereInLimit > unique.length ? unique.length : i + _whereInLimit,
       );
-      final snap =
-          await _col.where(FieldPath.documentId, whereIn: chunk).get();
+      final snap = await _col.where(FieldPath.documentId, whereIn: chunk).get();
       results.addAll(snap.docs.map(_fromDoc));
     }
     return results;
+  }
+
+  @override
+  Future<int> acceptedTermsVersion(String id) async {
+    final snap = await _col.doc(id).get();
+    return (snap.data()?['termsVersion'] as num?)?.toInt() ?? 0;
+  }
+
+  @override
+  Future<void> acceptTerms(String id, int version) async {
+    await _col.doc(id).set({
+      'termsVersion': version,
+      'termsAcceptedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  }
+
+  @override
+  Future<void> deleteProfile(String id) async {
+    await _col.doc(id).delete();
   }
 
   AppUser _fromDoc(DocumentSnapshot<Map<String, dynamic>> snap) {

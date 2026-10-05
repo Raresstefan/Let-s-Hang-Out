@@ -27,11 +27,12 @@ class MockChatRepository implements ChatRepository {
   }
 
   @override
-  Future<void> ensureChat(
+  Future<bool> ensureChat(
     String activityId, {
     required String title,
     required List<String> memberIds,
   }) async {
+    if (_chats.containsKey(activityId)) return false;
     _chats.putIfAbsent(
       activityId,
       () => Chat(
@@ -42,6 +43,7 @@ class MockChatRepository implements ChatRepository {
       ),
     );
     _messages.putIfAbsent(activityId, () => []);
+    return true;
   }
 
   @override
@@ -101,32 +103,57 @@ class MockChatRepository implements ChatRepository {
     required String text,
   }) async {
     final list = _messages.putIfAbsent(activityId, () => []);
-    list.add(Message(
-      id: _uuid.v4(),
-      senderId: senderId,
-      text: text,
-      createdAt: DateTime.now(),
-    ));
+    list.add(
+      Message(
+        id: _uuid.v4(),
+        senderId: senderId,
+        text: text,
+        createdAt: DateTime.now(),
+      ),
+    );
     _emit(activityId);
   }
 
   @override
   Future<void> sendSystemMessage(
-    String activityId, {
+    String chatId, {
     required String actorId,
-    required String text,
+    required SystemEvent event,
+    required String subjectId,
+    required String subjectName,
+    String? title,
+    String? activityId,
   }) async {
-    final list = _messages.putIfAbsent(activityId, () => []);
-    list.add(Message(
-      id: _uuid.v4(),
-      senderId: actorId,
-      text: text,
-      createdAt: DateTime.now(),
-      isSystem: true,
-    ));
-    _emit(activityId);
+    final list = _messages.putIfAbsent(chatId, () => []);
+    list.add(
+      Message(
+        id: _uuid.v4(),
+        senderId: actorId,
+        text: '',
+        createdAt: DateTime.now(),
+        isSystem: true,
+        systemEvent: event,
+        subjectName: subjectName,
+        subjectTitle: title,
+      ),
+    );
+    _emit(chatId);
   }
 
   @override
   Future<Chat?> chatFor(String activityId) async => _chats[activityId];
+
+  @override
+  Future<void> removeMember(String activityId, String userId) async {
+    final chat = _chats[activityId];
+    if (chat == null || !chat.memberIds.contains(userId)) return;
+    _chats[activityId] = Chat(
+      id: chat.id,
+      activityId: chat.activityId,
+      title: chat.title,
+      memberIds: chat.memberIds.where((id) => id != userId).toList(),
+      lastMessageText: chat.lastMessageText,
+      lastMessageAt: chat.lastMessageAt,
+    );
+  }
 }

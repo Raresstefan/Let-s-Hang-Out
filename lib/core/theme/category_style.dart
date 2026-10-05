@@ -9,17 +9,34 @@ import '../../domain/models/activity_category.dart';
 class CategoryStyle {
   CategoryStyle._();
 
-  static const Map<ActivityCategory, Color> _colors = {
-    ActivityCategory.drinks: Color(0xFFF4A62A), // amber
-    ActivityCategory.tennis: Color(0xFF34B978), // green
-    ActivityCategory.coffee: Color(0xFFA9744F), // coffee brown
-    ActivityCategory.food: Color(0xFFF2683C), // orange
-    ActivityCategory.music: Color(0xFF8B5CF6), // purple
-    ActivityCategory.sport: Color(0xFF3B82F6), // blue
+  static const Map<String, Color> _featuredColors = {
+    'drinks': Color(0xFFF4A62A),
+    'tennis': Color(0xFF34B978),
+    'padel': Color(0xFF17A673),
+    'coffee': Color(0xFFA9744F),
+    'food': Color(0xFFF2683C),
+    'music': Color(0xFF8B5CF6),
+    'sport': Color(0xFF3B82F6),
   };
 
-  static Color color(ActivityCategory category) =>
-      _colors[category] ?? const Color(0xFFFF6B5E);
+  static const List<Color> _catalogPalette = [
+    Color(0xFFE85D75),
+    Color(0xFF7C5CE7),
+    Color(0xFF2E9CDB),
+    Color(0xFF12A594),
+    Color(0xFFDA8A2E),
+    Color(0xFFCA5A9E),
+  ];
+
+  static Color color(ActivityCategory category) {
+    final featured = _featuredColors[category.id];
+    if (featured != null) return featured;
+    final hash = category.id.codeUnits.fold<int>(
+      0,
+      (value, unit) => (value * 31 + unit) & 0x7fffffff,
+    );
+    return _catalogPalette[hash % _catalogPalette.length];
+  }
 
   /// A subtle gradient derived from the category color for selected pills /
   /// accents.

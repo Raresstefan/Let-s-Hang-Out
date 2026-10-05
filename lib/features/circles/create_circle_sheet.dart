@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/analytics/analytics_service.dart';
 import '../../core/l10n/app_localizations.dart';
+import '../../core/moderation/content_filter.dart';
 import '../../core/theme/app_theme.dart';
 import '../../domain/models/app_user.dart';
 import '../friends/friends_controller.dart';
@@ -44,8 +45,15 @@ class _CreateCircleSheetState extends State<CreateCircleSheet> {
 
   bool get _canCreate => _name.text.trim().isNotEmpty && !_submitting;
 
+  String? _nameError;
+
   Future<void> _create() async {
     if (!_canCreate) return;
+    if (ContentFilter.hasBlocked(_name.text)) {
+      setState(() =>
+          _nameError = AppLocalizations.of(context).tr('moderation.blocked'));
+      return;
+    }
     setState(() => _submitting = true);
     final circle = await context.read<CirclesController>().createCircle(
           name: _name.text.trim(),
@@ -95,9 +103,12 @@ class _CreateCircleSheetState extends State<CreateCircleSheet> {
               textCapitalization: TextCapitalization.words,
               onChanged: (_) {
                 context.read<AnalyticsService>().inputTyping('circle_name');
-                setState(() {});
+                setState(() => _nameError = null);
               },
-              decoration: InputDecoration(hintText: l.tr('circles.nameHint')),
+              decoration: InputDecoration(
+                hintText: l.tr('circles.nameHint'),
+                errorText: _nameError,
+              ),
             ),
             const SizedBox(height: 16),
             Text(l.tr('circles.emoji'), style: theme.textTheme.titleSmall),

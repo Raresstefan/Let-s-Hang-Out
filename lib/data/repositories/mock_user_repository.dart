@@ -7,8 +7,10 @@ import 'user_repository.dart';
 /// avatars still render a label instead of a raw uid.
 class MockUserRepository implements UserRepository {
   final Map<String, AppUser> _profiles = {
-    MockAuthService.mockUserId:
-        const AppUser(id: MockAuthService.mockUserId, displayName: 'Rares'),
+    MockAuthService.mockUserId: const AppUser(
+      id: MockAuthService.mockUserId,
+      displayName: 'Rares',
+    ),
   };
 
   /// Shared profile store, so [MockFriendRepository] can read/mutate the same
@@ -39,10 +41,26 @@ class MockUserRepository implements UserRepository {
     return ids
         .toSet()
         .where((id) => id.isNotEmpty)
-        .map((id) =>
-            _profiles[id] ??
-            AppUser(id: id, displayName: _syntheticName(id)))
+        .map(
+          (id) =>
+              _profiles[id] ?? AppUser(id: id, displayName: _syntheticName(id)),
+        )
         .toList();
+  }
+
+  final Map<String, int> _terms = {};
+
+  @override
+  Future<int> acceptedTermsVersion(String id) async => _terms[id] ?? 0;
+
+  @override
+  Future<void> acceptTerms(String id, int version) async {
+    _terms[id] = version;
+  }
+
+  @override
+  Future<void> deleteProfile(String id) async {
+    _profiles.remove(id);
   }
 
   String _syntheticName(String id) {
