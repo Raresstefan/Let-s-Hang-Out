@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../../core/analytics/analytics_service.dart';
 import '../../core/l10n/app_localizations.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/widgets/cover_image.dart';
 import '../../domain/models/app_user.dart';
 import '../../domain/models/friend_request.dart';
 import '../profile/profile_avatar_button.dart';
@@ -50,9 +51,12 @@ class _FriendsScreenState extends State<FriendsScreen> {
   }
 
   void _openProfile(AppUser user) {
-    Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => UserProfileScreen(userId: user.id, initialProfile: user),
-    ));
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) =>
+            UserProfileScreen(userId: user.id, initialProfile: user),
+      ),
+    );
   }
 
   Future<void> _confirmUnfriend(AppUser user) async {
@@ -143,7 +147,9 @@ class _FriendsScreenState extends State<FriendsScreen> {
                     user: u,
                     onTap: () => _openProfile(u),
                     trailing: _AddFriendToggle(
-                        key: ValueKey('toggle_${u.id}'), userId: u.id),
+                      key: ValueKey('toggle_${u.id}'),
+                      userId: u.id,
+                    ),
                   ),
             ] else ...[
               // ---- Incoming requests ----
@@ -226,9 +232,9 @@ class _SectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.only(top: 8, bottom: 8),
-        child: Text(text, style: Theme.of(context).textTheme.titleMedium),
-      );
+    padding: const EdgeInsets.only(top: 8, bottom: 8),
+    child: Text(text, style: Theme.of(context).textTheme.titleMedium),
+  );
 }
 
 class _EmptyHint extends StatelessWidget {
@@ -237,13 +243,14 @@ class _EmptyHint extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 4),
-        child: Text(
-          text,
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: Theme.of(context).colorScheme.onSurfaceVariant),
-        ),
-      );
+    padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 4),
+    child: Text(
+      text,
+      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
+      ),
+    ),
+  );
 }
 
 /// A person row: avatar + name (+ optional subtitle) + optional trailing action.
@@ -279,7 +286,9 @@ class _UserTile extends StatelessWidget {
           gradient: hasPhoto ? null : AppTheme.brandGradient,
           image: hasPhoto
               ? DecorationImage(
-                  image: NetworkImage(user.avatarUrl!), fit: BoxFit.cover)
+                  image: CoverImage.providerFor(user.avatarUrl!),
+                  fit: BoxFit.cover,
+                )
               : null,
         ),
         child: hasPhoto
@@ -287,9 +296,10 @@ class _UserTile extends StatelessWidget {
             : Text(
                 _initial(name),
                 style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w800,
-                    fontSize: 18),
+                  color: Colors.white,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 18,
+                ),
               ),
       ),
       title: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis),
@@ -328,8 +338,9 @@ class _AddFriendToggleState extends State<_AddFriendToggle> {
 
   Future<void> _loadStatus() async {
     try {
-      final s =
-          await context.read<FriendsController>().statusWith(widget.userId);
+      final s = await context.read<FriendsController>().statusWith(
+        widget.userId,
+      );
       if (mounted) setState(() => _status = s);
     } catch (_) {
       // Keep whatever we have; never get stuck on a failed read.
@@ -346,8 +357,8 @@ class _AddFriendToggleState extends State<_AddFriendToggle> {
     final optimistic = previous == FriendshipStatus.requestedByMe
         ? FriendshipStatus.none
         : previous == FriendshipStatus.none
-            ? FriendshipStatus.requestedByMe
-            : previous; // friends/incoming handled by the action, not a toggle
+        ? FriendshipStatus.requestedByMe
+        : previous; // friends/incoming handled by the action, not a toggle
     setState(() {
       _busy = true;
       _status = optimistic;
@@ -383,24 +394,33 @@ class _AddFriendToggleState extends State<_AddFriendToggle> {
     final l = AppLocalizations.of(context);
     if (!_loaded) {
       return const SizedBox(
-        height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2));
+        height: 20,
+        width: 20,
+        child: CircularProgressIndicator(strokeWidth: 2),
+      );
     }
     switch (_status) {
       case FriendshipStatus.friends:
         return _GhostButton(
-            label: l.tr('friends.alreadyFriends'), onPressed: null);
+          label: l.tr('friends.alreadyFriends'),
+          onPressed: null,
+        );
       case FriendshipStatus.requestedByMe:
         // Subtle "Requested" state — tap to cancel (toggles back).
         return _GhostButton(
-            label: l.tr('friends.requested'),
-            onPressed: _busy ? null : _toggle);
+          label: l.tr('friends.requested'),
+          onPressed: _busy ? null : _toggle,
+        );
       case FriendshipStatus.incoming:
         return _AddButton(
-            label: l.tr('friends.accept'),
-            onPressed: _busy ? null : _toggle);
+          label: l.tr('friends.accept'),
+          onPressed: _busy ? null : _toggle,
+        );
       case FriendshipStatus.none:
         return _AddButton(
-            label: l.tr('friends.add'), onPressed: _busy ? null : _toggle);
+          label: l.tr('friends.add'),
+          onPressed: _busy ? null : _toggle,
+        );
     }
   }
 }
@@ -413,14 +433,14 @@ class _AddButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => FilledButton(
-        onPressed: onPressed,
-        style: FilledButton.styleFrom(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          minimumSize: Size.zero,
-          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        ),
-        child: Text(label),
-      );
+    onPressed: onPressed,
+    style: FilledButton.styleFrom(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      minimumSize: Size.zero,
+      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+    ),
+    child: Text(label),
+  );
 }
 
 /// Subtle outlined action (Deny / Cancel / Requested). A null [onPressed]
@@ -432,12 +452,12 @@ class _GhostButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => OutlinedButton(
-        onPressed: onPressed,
-        style: OutlinedButton.styleFrom(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-          minimumSize: Size.zero,
-          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        ),
-        child: Text(label),
-      );
+    onPressed: onPressed,
+    style: OutlinedButton.styleFrom(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      minimumSize: Size.zero,
+      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+    ),
+    child: Text(label),
+  );
 }

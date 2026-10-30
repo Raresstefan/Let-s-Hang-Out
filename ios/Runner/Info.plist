@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Hangout</string>
+	<string>Hang Out</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -13,12 +13,33 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>hangout</string>
+	<string>Hang Out</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<!-- Google Sign-In: iOS OAuth client + reversed-client-id callback scheme. -->
 	<key>GIDClientID</key>
 	<string>998116442751-7db6tci4ma2a52qj5tdl5p0a18rahs5a.apps.googleusercontent.com</string>
+	<!-- "Get directions": detect installed map apps (url_launcher canLaunchUrl). -->
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>comgooglemaps</string>
+		<string>waze</string>
+	</array>
+	<!-- Photo picking (file_picker links the Photos/Media APIs; App Store
+	     Connect rejects builds without these purpose strings, ITMS-90683). -->
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Hang Out accesses your photo library when you choose a profile picture or an activity cover, or save a story image to Photos.</string>
+	<!-- "Save Image" from the story card share sheet (add-only access). -->
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Hang Out saves the story images you create to your photo library.</string>
+	<!-- Only standard HTTPS/TLS (Firebase); answers the export-compliance
+	     question for every upload. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<key>NSAppleMusicUsageDescription</key>
+	<string>Hang Out doesn't use your music library. This permission is never requested.</string>
+	<key>FlutterDeepLinkingEnabled</key>
+	<false/>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -27,6 +48,16 @@
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>com.googleusercontent.apps.998116442751-7db6tci4ma2a52qj5tdl5p0a18rahs5a</string>
+			</array>
+		</dict>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>activity-links</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>hangout</string>
 			</array>
 		</dict>
 	</array>
@@ -42,18 +73,11 @@
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>
 	<string>Main</string>
+	<!-- iPhone-only app, portrait only. iPads run it in iPhone compatibility
+	     mode (TARGETED_DEVICE_FAMILY = 1). -->
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
-		<string>UIInterfaceOrientationLandscapeLeft</string>
-		<string>UIInterfaceOrientationLandscapeRight</string>
-	</array>
-	<key>UISupportedInterfaceOrientations~ipad</key>
-	<array>
-		<string>UIInterfaceOrientationPortrait</string>
-		<string>UIInterfaceOrientationPortraitUpsideDown</string>
-		<string>UIInterfaceOrientationLandscapeLeft</string>
-		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>

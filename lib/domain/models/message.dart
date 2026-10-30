@@ -6,7 +6,10 @@ enum SystemEvent {
   joined('joined'),
   planned('planned'),
   hostLeft('hostLeft'),
-  creatorLeft('creatorLeft');
+  creatorLeft('creatorLeft'),
+  left('left'),
+  updated('updated'),
+  cancelled('cancelled');
 
   const SystemEvent(this.id);
 
@@ -20,6 +23,11 @@ enum SystemEvent {
   }
 }
 
+/// Delivery state of a message the current user sent (WhatsApp-style: a clock
+/// while it's on its way, one check once the server has it, failed when it
+/// couldn't be saved and needs a retry).
+enum MessageStatus { sending, sent, failed }
+
 /// A single chat message in an activity's group chat.
 class Message {
   const Message({
@@ -31,6 +39,7 @@ class Message {
     this.systemEvent,
     this.subjectName,
     this.subjectTitle,
+    this.status = MessageStatus.sent,
   });
 
   final String id;
@@ -52,4 +61,19 @@ class Message {
 
   /// Hangout title for [SystemEvent.planned].
   final String? subjectTitle;
+
+  /// [MessageStatus.sending] while the write is still pending locally.
+  final MessageStatus status;
+
+  Message withStatus(MessageStatus status) => Message(
+        id: id,
+        senderId: senderId,
+        text: text,
+        createdAt: createdAt,
+        isSystem: isSystem,
+        systemEvent: systemEvent,
+        subjectName: subjectName,
+        subjectTitle: subjectTitle,
+        status: status,
+      );
 }

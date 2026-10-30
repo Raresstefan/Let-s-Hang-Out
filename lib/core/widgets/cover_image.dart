@@ -50,11 +50,23 @@ class CoverImage extends StatelessWidget {
     }
   }
 
+  /// Image source for circular avatars and decorations across the app.
+  static ImageProvider<Object> providerFor(String source) {
+    if (!source.startsWith('data:')) return NetworkImage(source);
+    final bytes = _decodeDataUrl(source);
+    if (bytes == null || bytes.isEmpty) {
+      throw const FormatException('Invalid avatar image data');
+    }
+    return MemoryImage(bytes);
+  }
+
   /// Builds a `data:` URL from raw image [bytes] for a given [extension]
   /// (e.g. `png`, `jpg`). Used by the cover picker so the value flows through
   /// the existing `coverImageUrl` String field unchanged.
   static String dataUrlFromBytes(Uint8List bytes, String extension) {
-    final mime = (extension.toLowerCase() == 'png') ? 'image/png' : 'image/jpeg';
+    final mime = (extension.toLowerCase() == 'png')
+        ? 'image/png'
+        : 'image/jpeg';
     return 'data:$mime;base64,${base64Encode(bytes)}';
   }
 }

@@ -4,7 +4,7 @@ title: Terms of Service
 
 # Terms of Service for Hang Out
 
-**Last updated: 5 October 2026**
+**Last updated: 30 October 2026**
 
 These Terms of Service ("Terms") govern your use of the "Hang Out" mobile and web application ("Hang Out", "the app", "we", "us"). By creating an account or using the app, you agree to these Terms. If you do not agree, do not use the app.
 
@@ -16,7 +16,7 @@ You must be at least 18 years old to use Hang Out, because the app is used to me
 
 ## 2. Your account
 
-You sign in with Google. You are responsible for activity under your account and for keeping your Google credentials secure. Notify us at the address above if you believe your account has been compromised.
+You can sign in with email and password, Apple, or Google. Email/password users must verify their email address before using the app. You are responsible for activity under your account and for keeping your sign-in credentials secure. Notify us at the address above if you believe your account has been compromised.
 
 ## 3. User content
 

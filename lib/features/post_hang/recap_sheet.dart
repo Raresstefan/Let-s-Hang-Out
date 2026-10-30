@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../core/analytics/analytics_service.dart';
 import '../../core/l10n/app_localizations.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/widgets/cover_image.dart';
 import '../../data/auth/auth_service.dart';
 import '../../data/repositories/activity_repository.dart';
 import '../../data/repositories/user_repository.dart';
@@ -49,9 +50,9 @@ class _RecapSheetState extends State<RecapSheet> {
   @override
   void initState() {
     super.initState();
-    context
-        .read<AnalyticsService>()
-        .activityOnLoad('recap_${widget.activity.id}');
+    context.read<AnalyticsService>().activityOnLoad(
+      'recap_${widget.activity.id}',
+    );
     final uid = context.read<AuthService>().currentUserId;
     _rating = uid == null ? 0 : (widget.activity.ratings[uid] ?? 0);
     _rated = _rating > 0;
@@ -59,14 +60,18 @@ class _RecapSheetState extends State<RecapSheet> {
   }
 
   Future<void> _loadOthers(String? uid) async {
-    final otherIds =
-        widget.activity.memberIds.where((id) => id != uid).toList();
+    final otherIds = widget.activity.memberIds
+        .where((id) => id != uid)
+        .toList();
     if (otherIds.isEmpty) return;
     try {
-      final profiles =
-          await context.read<UserRepository>().fetchProfiles(otherIds);
+      final profiles = await context.read<UserRepository>().fetchProfiles(
+        otherIds,
+      );
       if (mounted) setState(() => _others = profiles);
-    } catch (_) {/* leave empty */}
+    } catch (_) {
+      /* leave empty */
+    }
   }
 
   Future<void> _rate(int stars) async {
@@ -78,14 +83,20 @@ class _RecapSheetState extends State<RecapSheet> {
       _rating = stars;
       _rated = true;
     });
-    analytics.buttonClicked('rate_activity',
-        params: {'activity_id': widget.activity.id, 'rating': stars});
+    analytics.buttonClicked(
+      'rate_activity',
+      params: {'activity_id': widget.activity.id, 'rating': stars},
+    );
     _pendingRate = () async {
       try {
         await repo.rateActivity(widget.activity.id, uid, stars);
-        analytics.actionSuccess('rateActivity',
-            params: {'activity_id': widget.activity.id});
-      } catch (_) {/* optimistic; ignore */}
+        analytics.actionSuccess(
+          'rateActivity',
+          params: {'activity_id': widget.activity.id},
+        );
+      } catch (_) {
+        /* optimistic; ignore */
+      }
     }();
     await _pendingRate;
   }
@@ -99,20 +110,25 @@ class _RecapSheetState extends State<RecapSheet> {
 
   Future<void> _hangAgain() async {
     final a = widget.activity;
-    context.read<AnalyticsService>().buttonClicked('hang_again',
-        params: {'activity_id': a.id});
+    context.read<AnalyticsService>().buttonClicked(
+      'hang_again',
+      params: {'activity_id': a.id},
+    );
     await _pendingRate;
     if (!mounted) return;
     Navigator.of(context).pop(_rated); // close the sheet first
-    await Navigator.of(context).push<bool>(MaterialPageRoute(
-      fullscreenDialog: true,
-      builder: (_) => CreateActivityScreen(
-        prefillTitle: a.title,
-        prefillPlace: a.placeSuggestion,
-        prefillCategory: a.category,
-        prefillMemberIds: a.memberIds,
+    await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => CreateActivityScreen(
+          prefillTitle: a.title,
+          prefillPlace: a.placeSuggestion,
+          prefillCity: a.city,
+          prefillCategory: a.category,
+          prefillMemberIds: a.memberIds,
+        ),
       ),
-    ));
+    );
   }
 
   @override
@@ -177,18 +193,20 @@ class _RecapSheetState extends State<RecapSheet> {
               child: Text(
                 _rated ? l.tr('postHang.thanks') : l.tr('postHang.tapToRate'),
                 style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant),
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
               ),
             ),
             const SizedBox(height: 20),
 
             // ---- People you met ----
             if (_others.isNotEmpty) ...[
-              Text(l.tr('postHang.peopleYouMet'),
-                  style: theme.textTheme.titleSmall),
+              Text(
+                l.tr('postHang.peopleYouMet'),
+                style: theme.textTheme.titleSmall,
+              ),
               const SizedBox(height: 8),
-              for (final u in _others)
-                _MetPersonTile(user: u),
+              for (final u in _others) _MetPersonTile(user: u),
               const SizedBox(height: 12),
             ],
 
@@ -239,10 +257,13 @@ class _MetPersonTileState extends State<_MetPersonTile> {
 
   Future<void> _load() async {
     try {
-      final s =
-          await context.read<FriendsController>().statusWith(widget.user.id);
+      final s = await context.read<FriendsController>().statusWith(
+        widget.user.id,
+      );
       if (mounted) setState(() => _status = s);
-    } catch (_) {/* ignore */} finally {
+    } catch (_) {
+      /* ignore */
+    } finally {
       if (mounted) setState(() => _loaded = true);
     }
   }
@@ -253,8 +274,10 @@ class _MetPersonTileState extends State<_MetPersonTile> {
       _busy = true;
       _status = FriendshipStatus.requestedByMe; // optimistic
     });
-    context.read<AnalyticsService>().buttonClicked('add_friend_from_recap',
-        params: {'target_user_id': widget.user.id});
+    context.read<AnalyticsService>().buttonClicked(
+      'add_friend_from_recap',
+      params: {'target_user_id': widget.user.id},
+    );
     try {
       await context.read<FriendsController>().sendRequest(widget.user.id);
     } catch (_) {
@@ -276,16 +299,28 @@ class _MetPersonTileState extends State<_MetPersonTile> {
     Widget trailing;
     if (!_loaded) {
       trailing = const SizedBox(
-          height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2));
+        height: 18,
+        width: 18,
+        child: CircularProgressIndicator(strokeWidth: 2),
+      );
     } else {
       switch (_status) {
         case FriendshipStatus.friends:
-          trailing = Text(l.tr('friends.alreadyFriends'),
-              style: const TextStyle(color: AppTheme.accent, fontWeight: FontWeight.w600));
+          trailing = Text(
+            l.tr('friends.alreadyFriends'),
+            style: const TextStyle(
+              color: AppTheme.accent,
+              fontWeight: FontWeight.w600,
+            ),
+          );
           break;
         case FriendshipStatus.requestedByMe:
-          trailing = Text(l.tr('friends.requested'),
-              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant));
+          trailing = Text(
+            l.tr('friends.requested'),
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          );
           break;
         default:
           trailing = FilledButton(
@@ -311,14 +346,20 @@ class _MetPersonTileState extends State<_MetPersonTile> {
           gradient: hasPhoto ? null : AppTheme.brandGradient,
           image: hasPhoto
               ? DecorationImage(
-                  image: NetworkImage(widget.user.avatarUrl!), fit: BoxFit.cover)
+                  image: CoverImage.providerFor(widget.user.avatarUrl!),
+                  fit: BoxFit.cover,
+                )
               : null,
         ),
         child: hasPhoto
             ? null
-            : Text((name.isEmpty ? '?' : name[0]).toUpperCase(),
+            : Text(
+                (name.isEmpty ? '?' : name[0]).toUpperCase(),
                 style: const TextStyle(
-                    color: Colors.white, fontWeight: FontWeight.w700)),
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
       ),
       title: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis),
       trailing: trailing,

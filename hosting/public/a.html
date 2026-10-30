@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>You're invited to hang out · Hang Out</title>
+  <meta name="description" content="Someone invited you to a hangout. Open it in Hang Out to see the details and join.">
+  <meta property="og:title" content="You're invited to hang out">
+  <meta property="og:description" content="Open the invite in Hang Out to see the details and join.">
+  <meta property="og:image" content="https://hang-out-129b5.web.app/icon.png">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary">
+  <link rel="icon" href="/icon.png">
+  <style>
+    :root { --coral: #FF6B5E; --peach: #FF8A5B; --ink: #2B2B2B; --muted: #6B6B6B; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+           font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+           background: #FBF7F4; color: var(--ink); }
+    main { width: 100%; max-width: 420px; padding: 32px 24px; text-align: center; }
+    img.logo { width: 96px; height: 96px; border-radius: 22px; box-shadow: 0 8px 24px rgba(255,107,94,.25); }
+    h1 { font-size: 26px; margin: 24px 0 8px; }
+    p { color: var(--muted); line-height: 1.5; margin: 0 0 28px; }
+    a.btn { display: block; padding: 16px; border-radius: 14px; font-weight: 600; font-size: 17px;
+            text-decoration: none; margin-bottom: 12px; }
+    a.primary { color: #fff; background: linear-gradient(90deg, var(--coral), var(--peach)); }
+    a.store { color: var(--ink); background: #fff; border: 1px solid #E8E1DC; }
+    .hidden { display: none !important; }
+    small { display: block; margin-top: 20px; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <main>
+    <img class="logo" src="/icon.png" alt="Hang Out">
+    <h1>You're invited to hang out</h1>
+    <p>Someone shared a hangout with you. Open it in Hang Out to see what's planned, who's going, and join.</p>
+    <a id="open" class="btn primary" href="#">Open in Hang Out</a>
+    <a id="play" class="btn store" href="#">Get it on Google Play</a>
+    <a id="appstore" class="btn store hidden" href="#">Download on the App Store</a>
+    <small id="hint">Don't have the app yet? Install it, then tap the link again.</small>
+  </main>
+  <script>
+    // Keep in sync with android applicationId; set APP_STORE_URL once the iOS
+    // app is live (the App Store button stays hidden until then).
+    var PACKAGE = 'com.hangout.hangout';
+    var PLAY_URL = 'https://play.google.com/store/apps/details?id=' + PACKAGE;
+    var APP_STORE_URL = '';
+
+    var parts = location.pathname.split('/').filter(Boolean);
+    var id = parts[0] === 'a' && /^[A-Za-z0-9_-]{1,128}$/.test(parts[1] || '') ? parts[1] : '';
+    var ua = navigator.userAgent;
+    var isAndroid = /Android/i.test(ua);
+    var isIOS = /iPhone|iPad|iPod/i.test(ua);
+
+    var open = document.getElementById('open');
+    var play = document.getElementById('play');
+    var appStore = document.getElementById('appstore');
+    play.href = PLAY_URL;
+    if (APP_STORE_URL) { appStore.href = APP_STORE_URL; appStore.classList.remove('hidden'); }
+
+    if (!id) {
+      open.classList.add('hidden');
+    } else if (isAndroid) {
+      // Opens the app, or Google Play when it isn't installed.
+      open.href = 'intent://activity/' + id + '#Intent;scheme=hangout;package=' + PACKAGE +
+        ';S.browser_fallback_url=' + encodeURIComponent(PLAY_URL) + ';end';
+    } else {
+      open.href = 'hangout://activity/' + id;
+    }
+    if (isAndroid) appStore.classList.add('hidden');
+    if (isIOS) play.classList.add('hidden');
+  </script>
+</body>
+</html>

@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/analytics/analytics_service.dart';
 import '../../data/auth/auth_service.dart';
@@ -7,6 +10,7 @@ import '../../data/repositories/chat_repository.dart';
 import '../../data/repositories/user_repository.dart';
 import '../../domain/models/activity.dart';
 import '../../domain/models/activity_category.dart';
+import '../../domain/models/city_names.dart';
 import '../../domain/models/message.dart';
 import '../safety/safety_controller.dart';
 
@@ -26,14 +30,37 @@ class FeedController extends ChangeNotifier {
         _analytics = analytics,
         _userRepository = userRepository {
     _safety?.addListener(notifyListeners);
+    // App-wide provider that outlives sign-out: drop the previous account's
+    // per-user state (friend badges, recap banner) when someone else signs in.
+    _boundUid = authService.currentUserId;
+    _authService.addListener(_onAuthChanged);
+    _restoreCity();
     load();
   }
 
+  static const cityPrefKey = 'feed.city';
+
   final SafetyController? _safety;
+
+  /// The user [_friendIds] / [_recapCandidate] / [_overrides] belong to.
+  String? _boundUid;
+
+  void _onAuthChanged() {
+    final uid = _authService.currentUserId;
+    if (uid == _boundUid) return;
+    _boundUid = uid;
+    _friendIds = const {};
+    _recapCandidate = null;
+    _locallyRated.clear();
+    _overrides.clear();
+    notifyListeners();
+    if (uid != null) load();
+  }
 
   @override
   void dispose() {
     _safety?.removeListener(notifyListeners);
+    _authService.removeListener(_onAuthChanged);
     super.dispose();
   }
 
@@ -69,6 +96,66 @@ class FeedController extends ChangeNotifier {
   ActivityCategory? _activeFilter;
   ActivityCategory? get activeFilter => _activeFilter;
 
+  /// Selected city (display name), or null for "All cities". Remembered
+  /// across launches.
+  String? _city;
+  String? get city => _city;
+
+  /// The cities that currently have upcoming activities the user can see,
+  /// busiest first. Built from the loaded feed, so the filter only ever
+  /// offers places where something is happening.
+  List<CityOption> get cityOptions =>
+      cityOptionsFrom(_discoverable().map((a) => a.city));
+
+  /// Total shown next to "All cities": the sum of the per-city counts, so
+  /// the numbers in the picker add up. Activities without a city aren't
+  /// counted (they still appear in the feed under "All cities").
+  int get discoverableCount =>
+      cityOptions.fold<int>(0, (sum, o) => sum + o.count);
+
+  /// Upcoming activities, minus blocked hosts and ones I was removed from.
+  Iterable<Activity> _discoverable() {
+    final me = _authService.currentUserId;
+    final now = DateTime.now();
+    return _activities.where((a) =>
+        a.startAt.isAfter(now) &&
+        !a.cancelled &&
+        !(_safety?.isBlocked(a.hostId) ?? false) &&
+        !(me != null && a.isRemoved(me)));
+  }
+
+  /// Picks a city (null = all cities) and remembers the choice.
+  void setCity(String? city) {
+    final value = (city == null || city.trim().isEmpty) ? null : city.trim();
+    if (value == _city) return;
+    _analytics.buttonClicked(value == null ? 'city_all' : 'city_select');
+    _city = value;
+    notifyListeners();
+    _persistCity(value);
+  }
+
+  Future<void> _restoreCity() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final saved = prefs.getString(cityPrefKey);
+      if (saved != null && _city == null) {
+        _city = saved;
+        notifyListeners();
+      }
+    } catch (_) {/* prefs unavailable (tests); start with all cities */}
+  }
+
+  Future<void> _persistCity(String? value) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (value == null) {
+        await prefs.remove(cityPrefKey);
+      } else {
+        await prefs.setString(cityPrefKey, value);
+      }
+    } catch (_) {}
+  }
+
   /// Free-text discovery search (matches title / place / category).
   String _query = '';
   String get query => _query;
@@ -77,15 +164,16 @@ class FeedController extends ChangeNotifier {
   /// both client-side over the loaded list (no extra fetch, no index).
   List<Activity> get visibleActivities {
     final q = _query.trim().toLowerCase();
-    final me = _authService.currentUserId;
-    return _activities.where((a) {
-      // Hide blocked hosts and activities the host removed me from.
-      if (_safety?.isBlocked(a.hostId) ?? false) return false;
-      if (me != null && a.isRemoved(me)) return false;
+    final cityK = _city == null ? null : cityKey(_city!);
+    // _discoverable drops started activities (incl. ones that started while
+    // the feed was open), blocked hosts and ones the host removed me from.
+    return _discoverable().where((a) {
+      if (cityK != null && cityKey(a.city) != cityK) return false;
       if (_activeFilter != null && a.category != _activeFilter) return false;
       if (q.isEmpty) return true;
       return a.title.toLowerCase().contains(q) ||
           a.placeSuggestion.toLowerCase().contains(q) ||
+          a.city.toLowerCase().contains(q) ||
           a.category.id.toLowerCase().contains(q) ||
           a.category.label.toLowerCase().contains(q);
     }).toList();
@@ -97,8 +185,12 @@ class FeedController extends ChangeNotifier {
   }
 
   /// Suggested activities surface first ("People liked this / signed up").
-  List<Activity> get suggested =>
-      _activities.where((a) => a.isSuggested).toList();
+  List<Activity> get suggested {
+    final now = DateTime.now();
+    return _activities
+        .where((a) => a.isSuggested && a.startAt.isAfter(now))
+        .toList();
+  }
 
   /// The current user's friends, for the "N friends going" social-proof badge.
   Set<String> _friendIds = const {};
@@ -157,6 +249,7 @@ class FeedController extends ChangeNotifier {
     if (uid == null) return;
     try {
       final me = await _userRepository.fetchProfile(uid);
+      if (uid != _boundUid) return; // signed out/switched meanwhile
       _friendIds = me?.friendIds.toSet() ?? const {};
     } catch (_) {
       // Leave as-is; the badge just won't show.
@@ -170,11 +263,15 @@ class FeedController extends ChangeNotifier {
     if (uid == null) return;
     try {
       final mine = await _repository.fetchMyActivities(uid);
+      if (uid != _boundUid) return; // signed out/switched meanwhile
       final now = DateTime.now();
       final ended = mine
           // Hosts don't rate their own hangout (rules reject it too).
           .where((a) =>
-              a.hostId != uid && a.startAt.isBefore(now) && !a.isRatedBy(uid))
+              a.hostId != uid &&
+              !a.cancelled &&
+              a.startAt.isBefore(now) &&
+              !a.isRatedBy(uid))
           .toList()
         ..sort((a, b) => b.startAt.compareTo(a.startAt));
       _recapCandidate = ended.isEmpty ? null : ended.first;
@@ -222,6 +319,34 @@ class FeedController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Records server copies pushed by a live listener (e.g. the host edited or
+  /// cancelled it on another device), so every screen reading [lookup] —
+  /// Discover cards, details, chat headers — shows the change.
+  void applyRemote(Iterable<Activity> remote) {
+    var changed = false;
+    for (final a in remote) {
+      final idx = _activities.indexWhere((x) => x.id == a.id);
+      if (idx != -1) {
+        _activities[idx] = a;
+      } else {
+        _overrides[a.id] = a;
+      }
+      changed = true;
+    }
+    if (changed) notifyListeners();
+  }
+
+  /// Keeps [activityId] in sync with the backend while a screen shows it.
+  /// Cancel the returned subscription when the screen goes away. Losing
+  /// access (removed from a circle) just stops updates; the last copy stays.
+  StreamSubscription<Activity?> follow(String activityId) =>
+      _repository.watchActivity(activityId).listen(
+        (a) {
+          if (a != null) applyRemote([a]);
+        },
+        onError: (Object _) {},
+      );
+
   /// Host-only: removes [memberId] from [activity] and its group chat. They
   /// can't rejoin (rules check `removedIds`). Throws on failure.
   Future<void> removeMember(Activity activity, String memberId) async {
@@ -235,6 +360,81 @@ class FeedController extends ChangeNotifier {
       // Chat may not exist yet (solo host + 1); the activity is what matters.
     }
     _analytics.actionSuccess('removeMember',
+        params: {'activity_id': activity.id});
+  }
+
+  /// Host-only: saves edited details and tells members in the group chat.
+  /// Throws on failure so the form can say so.
+  Future<Activity> updateActivity(Activity edited) async {
+    _analytics.buttonClicked('edit_activity',
+        params: {'activity_id': edited.id});
+    final updated = await _repository.updateActivity(edited);
+    _store(updated);
+    await _announceHostChange(updated, SystemEvent.updated);
+    _analytics.actionSuccess('editActivity',
+        params: {'activity_id': edited.id});
+    return updated;
+  }
+
+  /// Host-only: cancels [activity]. It disappears from Discover, members see
+  /// it as cancelled, and a line is posted in the group chat. Throws on
+  /// failure.
+  Future<void> cancelActivity(Activity activity) async {
+    _analytics.buttonClicked('cancel_activity',
+        params: {'activity_id': activity.id});
+    final updated = await _repository.cancelActivity(activity.id);
+    _activities.removeWhere((a) => a.id == updated.id);
+    _overrides[updated.id] = updated;
+    notifyListeners();
+    await _announceHostChange(updated, SystemEvent.cancelled);
+    _analytics.actionSuccess('cancelActivity',
+        params: {'activity_id': activity.id});
+  }
+
+  /// Best-effort "{host} updated/cancelled" line in the activity chat (it only
+  /// exists once someone joined).
+  Future<void> _announceHostChange(Activity a, SystemEvent event) async {
+    final uid = _authService.currentUserId;
+    if (uid == null || a.memberIds.length < 2) return;
+    try {
+      final profile = await _userRepository.fetchProfile(uid);
+      await _chatRepository.sendSystemMessage(
+        a.id,
+        actorId: uid,
+        event: event,
+        subjectId: uid,
+        subjectName: profile?.displayName ?? '',
+      );
+    } catch (_) {/* the change is saved; the chat line is a courtesy */}
+  }
+
+  /// Non-host member leaves [activity] (and its group chat). The rules also
+  /// drop their like/rating on leave. Throws on failure so the UI can say so.
+  Future<void> leave(Activity activity) async {
+    final uid = _authService.currentUserId;
+    if (uid == null || activity.hostId == uid) return;
+    _analytics.buttonClicked('leave_activity',
+        params: {'activity_id': activity.id});
+    final hadChat = activity.memberIds.length >= 2;
+    final updated = await _repository.leaveActivity(activity.id, uid);
+    _store(updated);
+    if (hadChat) {
+      // Announce first: only chat members may post, and removal ends that.
+      try {
+        final profile = await _userRepository.fetchProfile(uid);
+        await _chatRepository.sendSystemMessage(
+          activity.id,
+          actorId: uid,
+          event: SystemEvent.left,
+          subjectId: uid,
+          subjectName: profile?.displayName ?? '',
+        );
+      } catch (_) {/* best-effort */}
+      try {
+        await _chatRepository.removeMember(activity.id, uid);
+      } catch (_) {/* best-effort, like account deletion */}
+    }
+    _analytics.actionSuccess('leaveActivity',
         params: {'activity_id': activity.id});
   }
 

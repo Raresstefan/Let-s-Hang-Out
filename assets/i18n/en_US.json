@@ -6,8 +6,63 @@
   "auth": {
     "tagline": "Meet people. Do things. No awkwardness.",
     "continueWithGoogle": "Continue with Google",
+    "continueWithApple": "Continue with Apple",
+    "continueWithEmail": "Continue with email",
     "signingIn": "Signing you in…",
-    "error": "Couldn't sign in. Please try again."
+    "error": "Couldn't sign in. Please try again.",
+    "accountExistsUseGoogle": "This email is already registered with Google. Please continue with Google.",
+    "accountExistsOtherProvider": "This email is already registered. Please use the sign-in method you used before.",
+    "email": {
+      "back": "Back",
+      "signInTitle": "Welcome back",
+      "signUpTitle": "Create your account",
+      "resetTitle": "Reset your password",
+      "subtitle": "Sign in to find your people and make plans.",
+      "signUpSubtitle": "Create an account to find your people and make plans.",
+      "resetSubtitle": "Enter your email and we'll help you get back in.",
+      "name": "Your name",
+      "nameRequired": "Enter your name.",
+      "address": "Email address",
+      "password": "Password",
+      "passwordRequired": "Enter your password.",
+      "passwordTooShort": "Use at least 6 characters.",
+      "showPassword": "Show password",
+      "hidePassword": "Hide password",
+      "signInAction": "Sign in",
+      "signUpAction": "Create account",
+      "resetAction": "Send reset email",
+      "needAccount": "New here? Create an account",
+      "haveAccount": "Already have an account? Sign in",
+      "forgotPassword": "Forgot password?",
+      "backToSignIn": "Back to sign in",
+      "resetSent": "If an account exists for that email, a password reset link will be sent. Check your inbox and spam folder.",
+      "resetSentMock": "Demo mode: no email was sent.",
+      "verifyTitle": "Verify your email",
+      "verifyInstructions": "Check {email} for a verification link, including your spam folder. If you haven't received one, tap Resend verification email. Then come back and tap “I've verified”.",
+      "verifySendFailed": "Your account exists, but we couldn't send a verification email to {email}. Please try resending it.",
+      "verifyMock": "Demo mode: no email is sent. Tap “I've verified” to simulate email verification.",
+      "verifyNotYet": "Your email isn't verified yet. Open the link in your email, then try again.",
+      "verifyRefreshFailed": "We couldn't confirm your verification. Check your connection and try again.",
+      "verifyResent": "Verification email sent. Check your inbox and spam folder.",
+      "verifyResentMock": "Demo mode: no email was sent.",
+      "verifyCheck": "I've verified",
+      "verifyResend": "Resend verification email",
+      "signOut": "Sign out",
+      "nameSaveFailed": "Your account was created, but your name couldn't be saved. Set it in your profile after verifying.",
+      "verifyDeletionHelp": "To delete your account, verify your email and use Profile → Delete account, or contact letshangout45@gmail.com.",
+      "errors": {
+        "invalidEmail": "Enter a valid email address.",
+        "invalidCredentials": "The email or password is incorrect.",
+        "emailInUse": "An account already uses this email. Sign in with the method you used before.",
+        "weakPassword": "That password doesn't meet the security requirements. Try a stronger password.",
+        "tooManyRequests": "Too many attempts. Please wait a while and try again.",
+        "network": "Check your internet connection and try again.",
+        "userDisabled": "This account has been disabled. Contact support for help.",
+        "providerDisabled": "Email sign-in is unavailable. Please contact support.",
+        "sessionExpired": "Your session has expired. Please sign in again.",
+        "unknown": "Something went wrong. Please try again."
+      }
+    }
   },
   "common": {
     "join": "Join",
@@ -39,6 +94,14 @@
     "subtitle": "Find something to do near you",
     "searchHint": "Search activities, places…",
     "noMatches": "No activities match your search.",
+    "city": {
+      "all": "All cities",
+      "title": "Where do you want to hang out?",
+      "search": "Search cities",
+      "noMatches": "No hangouts in that city yet.",
+      "empty": "Nothing matches in {city} right now. Start something there, or look around other cities.",
+      "showAll": "Show all cities"
+    },
     "empty": "No activities yet. Be the first to create one!",
     "suggestedBanner": "People liked this",
     "likedCount": "{count} liked",
@@ -56,6 +119,9 @@
     "enrolledCount": "{count} enrolled",
     "startsIn": "Starts {when}",
     "hostedBy": "Hosted by {name}",
+    "link": {
+      "unavailable": "This hangout isn't available. It may have been deleted, or it's private to a circle."
+    },
     "detail": {
       "about": "About",
       "noDescription": "No description provided",
@@ -66,25 +132,65 @@
       "you": "You",
       "whenTitle": "When",
       "whereTitle": "Where",
-      "mapHint": "Map preview coming soon",
+      "directions": {
+        "action": "Get directions",
+        "googleMaps": "Google Maps",
+        "appleMaps": "Apple Maps",
+        "waze": "Waze",
+        "otherApps": "Other map apps",
+        "copy": "Copy address",
+        "copied": "Address copied",
+        "failed": "Couldn't open a maps app"
+      },
       "openChat": "Open group chat",
-      "shareMessage": "Join me for \"{title}\" at {place} — starts {when}. Let's hang out!",
-      "goingCount": "{count} going"
+      "shareMessage": "Join me for \"{title}\" at {place} — starts {when}. Let's hang out! {link}",
+      "goingCount": "{count} going",
+      "started": "This hangout has already started",
+      "leave": {
+        "action": "Leave",
+        "title": "Leave this hangout?",
+        "body": "You'll be removed from the group chat. You can join again any time before it starts.",
+        "confirm": "Leave",
+        "done": "You left the hangout",
+        "failed": "Couldn't leave. Check your connection and try again."
+      }
     },
     "placeholder": {
       "title": "e.g. Beers after work",
       "description": "Describe the activity. e.g. Tennis match, 2 hours",
       "place": "Where? Suggest a place",
+      "city": "e.g. Amsterdam",
       "startDate": "When does it start?"
     },
     "label": {
       "title": "Title",
       "description": "Description",
       "place": "Place suggestion",
+      "city": "City",
       "category": "Category",
       "startDate": "Start date & time",
       "coverImage": "Cover image",
       "optional": "optional"
+    },
+    "edit": {
+      "action": "Edit details",
+      "title": "Edit hangout",
+      "submit": "Save changes",
+      "done": "Changes saved. Members were notified in the chat.",
+      "failed": "Couldn't save your changes. Check your connection and try again."
+    },
+    "cancel": {
+      "action": "Cancel hangout",
+      "title": "Cancel this hangout?",
+      "body": "It will be removed from Discover. This can't be undone.",
+      "bodyOneMember": "1 person is going. They'll see it as cancelled and get a message in the group chat. This can't be undone.",
+      "bodyMembers": "{count} people are going. They'll see it as cancelled and get a message in the group chat. This can't be undone.",
+      "keep": "Keep it",
+      "confirm": "Cancel hangout",
+      "done": "Hangout cancelled",
+      "failed": "Couldn't cancel. Check your connection and try again.",
+      "banner": "This hangout was cancelled by the host",
+      "badge": "Cancelled"
     },
     "create": {
       "title": "Create activity",
@@ -108,6 +214,8 @@
     "validation": {
       "titleRequired": "A title is needed for creating the activity",
       "placeRequired": "The location is needed for creating the activity",
+      "cityRequired": "Add the city so people nearby can find it",
+      "cityTooLong": "That city name is too long",
       "startRequired": "The starting date is needed to create the activity",
       "startInPast": "Pick a start time in the future."
     }
@@ -116,7 +224,8 @@
     "title": "Hangouts",
     "empty": "You haven't joined any activities yet.",
     "hosting": "Hosting",
-    "joinedSection": "Joined"
+    "joinedSection": "Joined",
+    "loadFailed": "Couldn't load your hangouts. Check your connection."
   },
   "postHang": {
     "recapPrompt": "How was {title}?",
@@ -150,7 +259,15 @@
     "invited": "Invited",
     "pendingInvites": "Pending invites",
     "createCta": "Create circle",
-    "hangoutPlanned": "Hangout planned — find it in Hangouts and the circle chat."
+    "hangoutPlanned": "Hangout planned — find it in Hangouts and the circle chat.",
+    "leave": {
+      "action": "Leave circle",
+      "title": "Leave this circle?",
+      "body": "You'll leave the circle chat and won't see new hangouts planned in it. A member can invite you back.",
+      "confirm": "Leave",
+      "done": "You left the circle",
+      "failed": "Couldn't leave the circle. Check your connection and try again."
+    }
   },
   "friends": {
     "title": "Friends",
@@ -200,7 +317,8 @@
     "interestsOtherTitle": "Add your own",
     "interestsOtherHint": "e.g. Salsa dancing, Chess, Surfing…",
     "avatarHint": "Tap or drop a photo to set your picture",
-    "comingSoon": "Coming soon",
+    "saveFailed": "Couldn't save your profile. Check your connection and try again.",
+    "photoFailed": "Couldn't read that photo. Please choose a different image.",
     "stats": {
       "joined": "Joined",
       "hosted": "Hosted",
@@ -209,7 +327,6 @@
     "settings": {
       "title": "Settings",
       "notifications": "Notifications",
-      "language": "Language (EN)",
       "privacy": "Privacy",
       "logout": "Log out",
       "deleteAccount": "Delete account",
@@ -217,6 +334,8 @@
       "deleteAccountConfirmBody": "This permanently deletes your profile, bio, and interests. This can't be undone.",
       "deleteAccountConfirmAction": "Delete",
       "deleteAccountError": "We couldn't delete your account. Please check your connection and try again.",
+      "deleteAccountPassword": "Confirm your password",
+      "deleteAccountWrongPassword": "That password is incorrect. Your account has not been deleted.",
       "deleteAccountReauthRequired": "For your security, please sign in again and repeat this to delete your account."
     }
   },
@@ -230,7 +349,22 @@
     "systemCreatorLeft": "{name} has left. This circle continues without them.",
     "someone": "Someone",
     "removeMember": "Remove from chat",
-    "unavailable": "This chat isn't available. You may not be a member yet, or you're offline."
+    "unavailable": "This chat isn't available. You may not be a member yet, or you're offline.",
+    "systemLeft": "{name} left",
+    "systemUpdated": "{name} updated the hangout details. Check the time and place.",
+    "systemCancelled": "{name} cancelled this hangout.",
+    "statusSending": "Sending",
+    "statusSent": "Sent",
+    "notSent": "Not sent. Tap to retry.",
+    "retry": "Retry",
+    "deleteUnsent": "Delete message"
+  },
+  "reminders": {
+    "title": "{title} starts at {time}",
+    "body": "📍 {place}. See who's going.",
+    "bodyNoPlace": "Tap to see the details and who's going.",
+    "setting": "Hangout reminders",
+    "settingSubtitle": "A heads-up a couple of hours before hangouts you joined"
   },
   "notifications": {
     "joinRequest": "{name} wants to join \"{activity}\"",
@@ -301,5 +435,30 @@
   },
   "moderation": {
     "blocked": "Please remove offensive language."
+  },
+  "share": {
+    "failed": "Couldn't open sharing. Please try again."
+  },
+  "storyCard": {
+    "title": "Story card",
+    "option": "Share as story",
+    "optionHint": "An image for Instagram or WhatsApp Status",
+    "linkOption": "Send link",
+    "hosting": "I'm hosting",
+    "going": "I'm going to",
+    "invite": "Who's coming?",
+    "goingCount": "{count} going",
+    "joinMe": "Join me →",
+    "scan": "Scan or open the link to join",
+    "share": "Share",
+    "shareText": "Join me for \"{title}\" on Hang Out: {link}",
+    "error": "Couldn't create the image. Try again.",
+    "joinedHint": "You're in! Tell your friends with a story.",
+    "joinedAction": "Story",
+    "style": {
+      "photo": "Photo",
+      "color": "Color",
+      "dark": "Dark"
+    }
   }
 }

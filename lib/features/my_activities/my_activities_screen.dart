@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -22,7 +24,11 @@ class MyActivitiesScreen extends StatefulWidget {
 }
 
 class _MyActivitiesScreenState extends State<MyActivitiesScreen> {
-  late Future<List<Activity>> _future;
+  /// Live list from the backend: host edits, cancellations and membership
+  /// changes made on other devices show up without a manual refresh.
+  StreamSubscription<List<Activity>>? _sub;
+  List<Activity>? _items;
+  Object? _error;
 
   /// Activity ids the user just rated this session — drop their recap card
   /// immediately, without waiting on a refetch (avoids the cache/refresh race).
@@ -31,18 +37,40 @@ class _MyActivitiesScreenState extends State<MyActivitiesScreen> {
   @override
   void initState() {
     super.initState();
-    _future = _load();
+    _subscribe();
   }
 
-  Future<List<Activity>> _load() {
+  @override
+  void dispose() {
+    _sub?.cancel();
+    super.dispose();
+  }
+
+  void _subscribe() {
+    _sub?.cancel();
     final uid = context.read<AuthService>().currentUserId!;
-    return context.read<ActivityRepository>().fetchMyActivities(uid);
+    final feed = context.read<FeedController>();
+    _sub = context.read<ActivityRepository>().watchMyActivities(uid).listen(
+      (list) {
+        feed.applyRemote(list);
+        if (!mounted) return;
+        setState(() {
+          _items = list;
+          _error = null;
+        });
+      },
+      onError: (Object e) {
+        if (mounted) setState(() => _error = e);
+      },
+    );
   }
 
   Future<void> _refresh() async {
-    final next = _load();
-    setState(() => _future = next);
-    await next;
+    setState(() {
+      _error = null;
+      _items = null;
+    });
+    _subscribe();
   }
 
   @override
@@ -50,6 +78,8 @@ class _MyActivitiesScreenState extends State<MyActivitiesScreen> {
     final l = AppLocalizations.of(context);
     context.read<AnalyticsService>().activityOnLoad('my_activities');
     final uid = context.read<AuthService>().currentUserId;
+    // Rebuild on local changes (edits/cancels from this device).
+    final feed = context.watch<FeedController>();
 
     return Scaffold(
       appBar: AppBar(
@@ -58,13 +88,33 @@ class _MyActivitiesScreenState extends State<MyActivitiesScreen> {
       ),
       body: RefreshIndicator(
         onRefresh: _refresh,
-        child: FutureBuilder<List<Activity>>(
-        future: _future,
-        builder: (context, snap) {
-          if (!snap.hasData) {
+        child: Builder(
+        builder: (context) {
+          if (_error != null && _items == null) {
+            return ListView(
+              children: [
+                const SizedBox(height: 120),
+                Center(child: Text(l.tr('myActivities.loadFailed'))),
+                const SizedBox(height: 12),
+                Center(
+                  child: TextButton(
+                    onPressed: _refresh,
+                    child: Text(l.tr('common.retry')),
+                  ),
+                ),
+              ],
+            );
+          }
+          final data = _items;
+          if (data == null) {
             return const Center(child: CircularProgressIndicator());
           }
-          final items = snap.data!;
+          // The controller holds the newest copy (live updates + this
+          // device's own writes).
+          final items = data
+              .map((a) => feed.lookup(a.id) ?? a)
+              .where((a) => uid != null && a.memberIds.contains(uid))
+              .toList();
           if (items.isEmpty) {
             // Scrollable so pull-to-refresh works from the empty state too.
             return ListView(
@@ -94,6 +144,7 @@ class _MyActivitiesScreenState extends State<MyActivitiesScreen> {
                 _SectionHeader(l.tr('postHang.past')),
                 for (final a in past)
                   (uid != null &&
+                          !a.cancelled &&
                           !a.isRatedBy(uid) &&
                           !_locallyRated.contains(a.id))
                       ? RecapCard(
@@ -156,7 +207,13 @@ class _MyActivitiesScreenState extends State<MyActivitiesScreen> {
     final trailing = Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (hosting)
+        if (a.cancelled)
+          Chip(
+            label: Text(l.tr('activity.cancel.badge')),
+            visualDensity: VisualDensity.compact,
+            labelStyle: TextStyle(color: Theme.of(context).colorScheme.error),
+          )
+        else if (hosting)
           Chip(
             label: Text(l.tr('myActivities.hosting')),
             visualDensity: VisualDensity.compact,
@@ -172,8 +229,13 @@ class _MyActivitiesScreenState extends State<MyActivitiesScreen> {
 
     return ListTile(
       leading: CircleAvatar(child: Text(a.category.emoji)),
-      title: Text(a.title),
-      subtitle: Text(a.placeSuggestion),
+      title: Text(
+        a.title,
+        style: a.cancelled
+            ? const TextStyle(decoration: TextDecoration.lineThrough)
+            : null,
+      ),
+      subtitle: Text(a.placeWithCity),
       trailing: trailing,
       // Tapping the row opens the activity details (members, chat shortcut…).
       onTap: openDetails,

@@ -4,7 +4,7 @@ title: Privacy Policy
 
 # Privacy Policy for Hang Out
 
-**Last updated: 5 October 2026**
+**Last updated: 30 October 2026**
 
 This Privacy Policy explains how the "Hang Out" mobile and web application ("Hang Out", "the app", "we", "us") collects, uses, and protects your information. By creating an account and using Hang Out, you agree to the practices described here.
 
@@ -20,15 +20,17 @@ Hang Out is a social application that helps people organize and join in-person s
 
 We collect only the data needed to run the service:
 
-**Account & identity (via Google Sign-In):**
-- Your name
-- Your email address
-- Your Google profile photo
+**Account & identity (via email/password, Sign in with Apple, or Google Sign-In):**
+- Your name (with Apple, only if you choose to share it)
+- Your email address (with Apple, this may be a private relay address if you choose "Hide My Email")
+- Your Google profile photo (Google sign-in only)
 - A unique account identifier
+- If you use email/password, Firebase Authentication processes your password and
+  sends verification and password-reset emails.
 
 **Profile information you provide:**
 - Display name, bio and interests
-- A profile photo, if you upload one from your device (it replaces your Google photo)
+- A profile photo, if you upload one from your device (it replaces your Google photo, if any)
 - The date and version of the Terms of Service you accepted
 
 **Content you create:**
@@ -70,7 +72,7 @@ Where the GDPR applies, we process your data:
 
 Hang Out is built on Google Firebase. Your data is stored and processed by:
 
-- **Google Firebase Authentication** and **Google Sign-In**: sign-in.
+- **Google Firebase Authentication**, **Google Sign-In** and **Sign in with Apple** (Apple Inc.): sign-in. Apple's privacy policy: https://www.apple.com/legal/privacy/
 - **Google Cloud Firestore**: your profile (including an uploaded profile photo), activities, ratings, friends, circles, chat messages, reports, blocks, and terms acceptance.
 - **Google Cloud Storage for Firebase**: activity cover images.
 - **Google Analytics for Firebase**: usage and device data described in section 2.
@@ -95,7 +97,7 @@ We keep your account data for as long as your account is active. When you delete
 
 ## 8. Deleting your account and data
 
-You can delete your account at any time in the app: **Profile → Delete account**. This deletes your profile (name, photo, bio, interests, terms acceptance), removes your friend links, removes you from activities and circles you joined (including your likes and ratings), and deletes your sign-in record.
+You can delete your account in the app: **Profile → Delete account**. Email/password accounts must verify their email before entering the app and confirm their password before deletion. This deletes your profile (name, photo, bio, interests, terms acceptance), removes your friend links, removes you from activities and circles you joined (including your likes and ratings), and deletes your sign-in record. If you signed in with Apple, we also revoke Hang Out's Sign in with Apple authorization, so the app no longer appears under your Apple ID's "Sign in with Apple" settings.
 
 What stays:
 - Activities and circles you created, and messages you sent in group chats, stay visible to the other members so their plans and conversations are not broken. They are no longer linked to a profile.

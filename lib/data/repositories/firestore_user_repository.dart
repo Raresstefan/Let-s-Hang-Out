@@ -26,13 +26,21 @@ class FirestoreUserRepository implements UserRepository {
   }) async {
     // Identity-only write (sign-in). merge:true preserves any saved bio +
     // interests so logging in never wipes the user's edited profile.
-    await _col.doc(id).set({
-      'displayName': displayName,
-      // Lowercased name powers case-insensitive prefix search (friend finder).
-      'displayNameLower': displayName.toLowerCase(),
-      'avatarUrl': avatarUrl,
-      'updatedAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+    final doc = _col.doc(id);
+    await _db.runTransaction((transaction) async {
+      final existing = await transaction.get(doc);
+      final existingName = existing.data()?['displayName'] as String? ?? '';
+      // Apple only shares the name on first sign-in (and users can hide it):
+      // never overwrite a saved name with an empty one.
+      final writeName = displayName.isNotEmpty || existingName.isEmpty;
+      transaction.set(doc, {
+        if (writeName) 'displayName': displayName,
+        // Lowercased name powers case-insensitive prefix search (friend finder).
+        if (writeName) 'displayNameLower': displayName.toLowerCase(),
+        if (existing.data()?['avatarUrl'] == null) 'avatarUrl': avatarUrl,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    });
   }
 
   @override

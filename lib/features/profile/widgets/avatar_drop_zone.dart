@@ -2,6 +2,7 @@ import 'package:desktop_drop/desktop_drop.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_theme.dart';
+import '../../../core/l10n/app_localizations.dart';
 import '../../../core/widgets/cover_image.dart';
 import '../../../core/widgets/image_pick.dart';
 
@@ -35,16 +36,30 @@ class AvatarDropZone extends StatefulWidget {
 class _AvatarDropZoneState extends State<AvatarDropZone> {
   bool _dragging = false;
 
-  void _apply(PickedImage? picked) {
+  Future<void> _apply(PickedImage? picked) async {
     if (picked == null) return; // cancelled
     if (!picked.ok) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(picked.error!)));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(picked.error!)));
       }
       return;
     }
-    widget.onChanged(picked.dataUrl!);
+    try {
+      final url = await avatarDataUrl(picked.bytes!);
+      if (mounted) widget.onChanged(url);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              AppLocalizations.of(context).tr('profile.photoFailed'),
+            ),
+          ),
+        );
+      }
+    }
   }
 
   @override
@@ -109,8 +124,11 @@ class _AvatarDropZoneState extends State<AvatarDropZone> {
                     shape: BoxShape.circle,
                     border: Border.all(color: Colors.white, width: 3),
                   ),
-                  child: const Icon(Icons.photo_camera_rounded,
-                      color: Colors.white, size: 17),
+                  child: const Icon(
+                    Icons.photo_camera_rounded,
+                    color: Colors.white,
+                    size: 17,
+                  ),
                 ),
               ),
             ],

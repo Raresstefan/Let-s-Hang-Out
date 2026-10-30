@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/notifications/reminder_service.dart';
 import '../../core/analytics/analytics_service.dart';
 import '../../core/l10n/app_localizations.dart';
 import '../../core/legal/legal.dart';
@@ -15,13 +16,13 @@ import '../../domain/interests/interest_catalog.dart';
 import '../../domain/models/activity.dart';
 import '../../domain/models/app_user.dart';
 import '../../domain/models/host_stats.dart';
+import '../auth/email_auth_errors.dart';
 import '../legal/legal_doc_screen.dart';
 import 'widgets/avatar_drop_zone.dart';
 
 /// The user's profile: an editable identity (avatar / name / handle / bio), a
 /// compact (non-clickable) stat strip, selectable interest chips, and a settings
-/// list. All state is in-memory for now (no backend) — discovering activities,
-/// friends and joined activities live in their own bottom-nav tabs.
+/// list. Editable fields are persisted in the user profile.
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
 
@@ -35,6 +36,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String _handle = 'rares';
   String _bio = '';
   String? _avatarUrl;
+  bool _savingAvatar = false;
+  late final Future<void> _profileLoad;
   // Interest ids the user picked (catalog ids or custom free-text). Hydrated
   // from the stored profile; empty until loaded.
   final Set<String> _interests = {};
@@ -67,7 +70,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
     _avatarUrl = auth.photoUrl;
     _loadStats();
-    _loadProfile();
+    _profileLoad = _loadProfile();
   }
 
   /// Hydrates the editable profile (bio + interests) from the stored `users`
@@ -81,6 +84,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (!mounted || profile == null) return;
       setState(() {
         _bio = profile.bio;
+        _avatarUrl = profile.avatarUrl ?? _avatarUrl;
         if (profile.displayName.trim().isNotEmpty) {
           _name = profile.displayName;
           _handle = profile.displayName.split(' ').first.toLowerCase();
@@ -96,10 +100,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   /// Persists the full editable profile (identity + bio + interests) to the
-  /// `users` doc. Best-effort: optimistic UI already updated; swallow errors.
-  Future<void> _persistProfile() async {
+  /// `users` doc. A failed save must not appear successful.
+  Future<bool> _persistProfile() async {
     final uid = context.read<AuthService>().currentUserId;
-    if (uid == null) return;
+    if (uid == null) return false;
     try {
       await context.read<UserRepository>().upsertProfile(
         AppUser(
@@ -110,9 +114,38 @@ class _ProfileScreenState extends State<ProfileScreen> {
           interests: _interests.toList(),
         ),
       );
+      return true;
     } catch (_) {
-      // Ignore — a later save / sign-in re-syncs.
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              AppLocalizations.of(context).tr('profile.saveFailed'),
+            ),
+          ),
+        );
+      }
+      return false;
     }
+  }
+
+  Future<void> _saveAvatar(String url) async {
+    await _profileLoad;
+    if (!mounted) return;
+    if (_savingAvatar) return;
+    _analytics.buttonClicked('profile_avatar_upload');
+    final previous = _avatarUrl;
+    setState(() {
+      _avatarUrl = url;
+      _savingAvatar = true;
+    });
+    final saved = await _persistProfile();
+    if (!mounted) return;
+    setState(() {
+      _savingAvatar = false;
+      if (!saved) _avatarUrl = previous;
+    });
+    if (saved) _analytics.actionSuccess('updateAvatar');
   }
 
   /// Opens the Tinder-style interest picker, then persists the new selection.
@@ -131,8 +164,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ..clear()
         ..addAll(result);
     });
-    _persistProfile();
-    _analytics.actionSuccess('updateInterests');
+    if (await _persistProfile()) {
+      _analytics.actionSuccess('updateInterests');
+    }
   }
 
   /// Pulls the user's activities once and tallies hosted vs joined. Failures are
@@ -181,38 +215,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _deleteAccount() async {
     _analytics.buttonClicked('settings_delete_account');
     final l = AppLocalizations.of(context);
-    final confirmed = await showDialog<bool>(
+    final auth = context.read<AuthService>();
+    final uid = auth.currentUserId;
+    final requiresPassword = auth.requiresPasswordForDeletion;
+    final password = await showDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(l.tr('profile.settings.deleteAccountConfirmTitle')),
-        content: Text(l.tr('profile.settings.deleteAccountConfirmBody')),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: Text(l.tr('common.cancel')),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(ctx).colorScheme.error,
-            ),
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: Text(l.tr('profile.settings.deleteAccountConfirmAction')),
-          ),
-        ],
-      ),
+      builder: (_) => _DeleteAccountDialog(requiresPassword: requiresPassword),
     );
-    if (confirmed != true || !mounted) return;
+    if (password == null || !mounted) return;
 
     setState(() => _deletingAccount = true);
-    final auth = context.read<AuthService>();
     final deletion = context.read<AccountDeletionService>();
-    final uid = auth.currentUserId;
     try {
-      if (uid != null) {
-        await deletion.deleteAccountAndData(uid);
-      } else {
-        await auth.deleteAccount();
+      if (uid == null || auth.currentUserId != uid) {
+        throw const EmailAuthException(EmailAuthFailure.sessionExpired);
       }
+      await deletion.deleteAccountAndData(
+        uid,
+        password: requiresPassword ? password : null,
+      );
       _analytics.actionSuccess('deleteAccount');
       // Deliberately leave _deletingAccount true and don't call setState here:
       // the auth gate in app.dart is about to pop this screen off the stack
@@ -231,6 +252,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
       );
       // Signed out too (just via a different path) — same reasoning as above.
+    } on SignInCancelled {
+      // Apple confirmation dismissed before anything was deleted.
+      if (!mounted) return;
+      setState(() => _deletingAccount = false);
+    } on EmailAuthException catch (e) {
+      if (!mounted) return;
+      setState(() => _deletingAccount = false);
+      final message = e.reason == EmailAuthFailure.invalidCredentials
+          ? 'profile.settings.deleteAccountWrongPassword'
+          : emailAuthErrorKey(e.reason);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(l.tr(message))),
+      );
     } catch (_) {
       if (!mounted) return;
       setState(() => _deletingAccount = false);
@@ -240,18 +274,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  void _comingSoon(String key) {
-    _analytics.buttonClicked('settings_$key');
-    final l = AppLocalizations.of(context);
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(l.tr('profile.comingSoon'))));
-  }
-
   void _openLegal(String key, String asset) {
     _analytics.buttonClicked('settings_$key');
-    LegalDocScreen.open(context, AppLocalizations.of(context).tr('legal.$key'),
-        asset);
+    LegalDocScreen.open(
+      context,
+      AppLocalizations.of(context).tr('legal.$key'),
+      asset,
+    );
   }
 
   Future<void> _contact() async {
@@ -270,10 +299,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
             const SizedBox(height: 12),
             Text(
               kContactEmail,
-              style: Theme.of(ctx)
-                  .textTheme
-                  .titleMedium
-                  ?.copyWith(fontWeight: FontWeight.w700),
+              style: Theme.of(
+                ctx,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
             ),
           ],
         ),
@@ -289,7 +317,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
               await Clipboard.setData(const ClipboardData(text: kContactEmail));
               if (ctx.mounted) Navigator.pop(ctx);
               messenger.showSnackBar(
-                  SnackBar(content: Text(l.tr('legal.emailCopied'))));
+                SnackBar(content: Text(l.tr('legal.emailCopied'))),
+              );
             },
           ),
         ],
@@ -311,8 +340,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _name = result.name;
       _bio = result.bio;
     });
-    _persistProfile();
-    _analytics.actionSuccess('updateProfile');
+    if (await _persistProfile()) {
+      _analytics.actionSuccess('updateProfile');
+    }
   }
 
   @override
@@ -329,15 +359,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
             children: [
               // ---- Header ----
               Center(
-                child: AvatarDropZone(
-                  initial: _name.isNotEmpty ? _name[0].toUpperCase() : '?',
-                  dataUrl: _avatarUrl,
-                  onChanged: (url) {
-                    _analytics.buttonClicked('profile_avatar_upload');
-                    setState(() => _avatarUrl = url);
-                  },
+                child: PopScope(
+                  canPop: !_savingAvatar,
+                  child: AbsorbPointer(
+                    absorbing: _savingAvatar,
+                    child: AvatarDropZone(
+                      initial: _name.isNotEmpty ? _name[0].toUpperCase() : '?',
+                      dataUrl: _avatarUrl,
+                      onChanged: _saveAvatar,
+                    ),
+                  ),
                 ),
               ),
+              if (_savingAvatar)
+                const Center(child: CircularProgressIndicator()),
               const SizedBox(height: 14),
               Center(
                 child: Text(
@@ -507,16 +542,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
               _SoftCard(
                 child: Column(
                   children: [
-                    _SettingsTile(
-                      icon: Icons.notifications_none_rounded,
-                      label: l.tr('profile.settings.notifications'),
-                      onTap: () => _comingSoon('notifications'),
-                    ),
-                    const Divider(height: 1, indent: 56),
-                    _SettingsTile(
-                      icon: Icons.language_rounded,
-                      label: l.tr('profile.settings.language'),
-                      onTap: () => _comingSoon('language'),
+                    Consumer<ReminderService>(
+                      builder: (context, reminders, _) => SwitchListTile(
+                        secondary: Icon(
+                          Icons.notifications_none_rounded,
+                          color: theme.colorScheme.primary,
+                        ),
+                        title: Text(l.tr('reminders.setting')),
+                        subtitle: Text(l.tr('reminders.settingSubtitle')),
+                        value: reminders.enabled,
+                        onChanged: reminders.setEnabled,
+                      ),
                     ),
                     const Divider(height: 1, indent: 56),
                     _SettingsTile(
@@ -570,6 +606,79 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 }
 
+class _DeleteAccountDialog extends StatefulWidget {
+  const _DeleteAccountDialog({required this.requiresPassword});
+
+  final bool requiresPassword;
+
+  @override
+  State<_DeleteAccountDialog> createState() => _DeleteAccountDialogState();
+}
+
+class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final _password = TextEditingController();
+
+  @override
+  void dispose() {
+    _password.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    return AlertDialog(
+      title: Text(l.tr('profile.settings.deleteAccountConfirmTitle')),
+      content: SingleChildScrollView(
+        child: Form(
+          key: _formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(l.tr('profile.settings.deleteAccountConfirmBody')),
+              if (widget.requiresPassword) ...[
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _password,
+                  obscureText: true,
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  autofillHints: const [AutofillHints.password],
+                  decoration: InputDecoration(
+                    labelText: l.tr('profile.settings.deleteAccountPassword'),
+                  ),
+                  validator: (value) => value == null || value.isEmpty
+                      ? l.tr('auth.email.passwordRequired')
+                      : null,
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(l.tr('common.cancel')),
+        ),
+        FilledButton(
+          style: FilledButton.styleFrom(
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+          onPressed: () {
+            if (!widget.requiresPassword || _formKey.currentState!.validate()) {
+              Navigator.of(context).pop(_password.text);
+            }
+          },
+          child: Text(l.tr('profile.settings.deleteAccountConfirmAction')),
+        ),
+      ],
+    );
+  }
+}
+
 /// A white rounded surface with the app's soft shadow.
 class _SoftCard extends StatelessWidget {
   const _SoftCard({required this.child});
@@ -584,7 +693,7 @@ class _SoftCard extends StatelessWidget {
         boxShadow: AppTheme.softShadow(opacity: 0.07, blur: 18),
       ),
       clipBehavior: Clip.antiAlias,
-      child: child,
+      child: Material(type: MaterialType.transparency, child: child),
     );
   }
 }
@@ -780,8 +889,9 @@ class _InterestsSheetState extends State<_InterestsSheet> {
     if (cleaned.isEmpty) return;
     if (ContentFilter.hasBlocked(cleaned)) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(l.tr('moderation.blocked'))));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(l.tr('moderation.blocked'))));
       return;
     }
     // Store custom interests as a normalized id so duplicates collapse.
@@ -1023,7 +1133,8 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
     final bio = _bio.text.trim();
     if (ContentFilter.hasBlocked(name) || ContentFilter.hasBlocked(bio)) {
       setState(
-          () => _error = AppLocalizations.of(context).tr('moderation.blocked'));
+        () => _error = AppLocalizations.of(context).tr('moderation.blocked'),
+      );
       return;
     }
     Navigator.of(context).pop(_ProfileEdits(name, bio));
@@ -1085,10 +1196,7 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
               ),
             ),
             const SizedBox(height: 20),
-            FilledButton(
-              onPressed: _save,
-              child: Text(l.tr('common.save')),
-            ),
+            FilledButton(onPressed: _save, child: Text(l.tr('common.save'))),
           ],
         ),
       ),

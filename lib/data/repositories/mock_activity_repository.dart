@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:uuid/uuid.dart';
 
 import '../../domain/models/activity.dart';
@@ -15,6 +17,25 @@ class MockActivityRepository implements ActivityRepository {
   final _uuid = const Uuid();
   final List<Activity> _activities = [];
 
+  /// Fires after every write so live watchers re-read, like Firestore
+  /// snapshot listeners do for other participants.
+  final _changes = StreamController<void>.broadcast();
+
+  void _changed() => _changes.add(null);
+
+  Stream<T> _watch<T>(T Function() read) {
+    StreamSubscription<void>? changes;
+    late final StreamController<T> out;
+    out = StreamController<T>(
+      onListen: () {
+        out.add(read());
+        changes = _changes.stream.listen((_) => out.add(read()));
+      },
+      onCancel: () => changes?.cancel(),
+    );
+    return out.stream;
+  }
+
   /// Stand-in for the signed-in user in mock mode.
   static const currentUserId = 'user-rares';
 
@@ -31,6 +52,7 @@ class MockActivityRepository implements ActivityRepository {
         description:
             'Casual drinks downtown. Looking for a few people to unwind with.',
         placeSuggestion: 'The Tap House, Main St.',
+        city: 'Bucharest',
         startAt: now.add(const Duration(hours: 6)),
         hostId: 'user-mihai',
         category: ActivityCategory.drinks,
@@ -46,6 +68,7 @@ class MockActivityRepository implements ActivityRepository {
         description:
             'Looking for one player. Intermediate level. Bring rackets!',
         placeSuggestion: 'City Sports Park, Court 3',
+        city: 'Cluj-Napoca',
         startAt: now.add(const Duration(days: 1, hours: 2)),
         hostId: 'user-radu',
         category: ActivityCategory.tennis,
@@ -59,6 +82,7 @@ class MockActivityRepository implements ActivityRepository {
         title: 'Morning coffee & chat ☕',
         description: 'Slow Saturday coffee, talk about books and travel.',
         placeSuggestion: 'Blue Bottle, Old Town',
+        city: 'Bucharest',
         startAt: now.add(const Duration(days: 2, hours: 3)),
         hostId: 'user-ana',
         category: ActivityCategory.coffee,
@@ -73,6 +97,7 @@ class MockActivityRepository implements ActivityRepository {
         title: 'Street food tour 🍔',
         description: 'Hitting 4 food trucks. Come hungry.',
         placeSuggestion: 'Riverside Market',
+        city: 'Amsterdam',
         startAt: now.add(const Duration(days: 3)),
         hostId: 'user-mihai',
         category: ActivityCategory.food,
@@ -87,8 +112,12 @@ class MockActivityRepository implements ActivityRepository {
   @override
   Future<List<Activity>> fetchActivities({ActivityCategory? category}) async {
     await _latency();
-    // Circle hangouts (circleId set) are private — excluded from Discover.
-    final visible = _activities.where((a) => a.circleId == null);
+    // Circle hangouts (circleId set) are private and past ones can't be
+    // joined — both excluded from Discover.
+    final now = DateTime.now();
+    final visible = _activities
+        .where((a) =>
+            a.circleId == null && !a.cancelled && a.startAt.isAfter(now));
     final list = category == null
         ? visible.toList()
         : visible.where((a) => a.category == category).toList();
@@ -104,6 +133,20 @@ class MockActivityRepository implements ActivityRepository {
   }
 
   @override
+  Stream<List<Activity>> watchMyActivities(String userId) => _watch(
+        () => _activities.where((a) => a.isMember(userId)).toList()
+          ..sort((a, b) => a.startAt.compareTo(b.startAt)),
+      );
+
+  @override
+  Stream<Activity?> watchActivity(String activityId) => _watch(() {
+        for (final a in _activities) {
+          if (a.id == activityId) return a;
+        }
+        return null;
+      });
+
+  @override
   Future<Activity> createActivity(Activity activity) async {
     await _latency();
     final members = <String>{activity.hostId, ...activity.memberIds}.toList();
@@ -115,12 +158,23 @@ class MockActivityRepository implements ActivityRepository {
       startAt: activity.startAt,
       hostId: activity.hostId,
       category: activity.category,
+      city: activity.city,
       coverImageUrl: activity.coverImageUrl,
       memberIds: members,
       circleId: activity.circleId,
     );
     _activities.insert(0, created);
+    _changed();
     return created;
+  }
+
+  @override
+  Future<Activity?> fetchActivity(String activityId) async {
+    await _latency();
+    for (final a in _activities) {
+      if (a.id == activityId) return a;
+    }
+    return null;
   }
 
   @override
@@ -137,6 +191,7 @@ class MockActivityRepository implements ActivityRepository {
         memberIds: [...activity.memberIds, userId],
       );
       _activities[idx] = updated;
+      _changed();
       return updated;
     }
     return activity;
@@ -153,6 +208,7 @@ class MockActivityRepository implements ActivityRepository {
         : [...activity.likedBy, userId];
     final updated = activity.copyWith(likedBy: likedBy);
     _activities[idx] = updated;
+    _changed();
     return updated;
   }
 
@@ -170,6 +226,7 @@ class MockActivityRepository implements ActivityRepository {
       ratings: {...activity.ratings, userId: rating},
     );
     _activities[idx] = updated;
+    _changed();
     return updated;
   }
 
@@ -204,6 +261,7 @@ class MockActivityRepository implements ActivityRepository {
       ratings: {...activity.ratings}..remove(userId),
     );
     _activities[idx] = updated;
+    _changed();
     return updated;
   }
 
@@ -218,6 +276,36 @@ class MockActivityRepository implements ActivityRepository {
       removedIds: {...activity.removedIds, memberId}.toList(),
     );
     _activities[idx] = updated;
+    _changed();
+    return updated;
+  }
+
+  @override
+  Future<Activity> updateActivity(Activity activity) async {
+    await _latency();
+    final idx = _activities.indexWhere((a) => a.id == activity.id);
+    if (idx == -1) throw StateError('Activity not found: ${activity.id}');
+    final updated = _activities[idx].copyWith(
+      title: activity.title,
+      description: activity.description,
+      placeSuggestion: activity.placeSuggestion,
+      city: activity.city,
+      startAt: activity.startAt,
+      category: activity.category,
+    );
+    _activities[idx] = updated;
+    _changed();
+    return updated;
+  }
+
+  @override
+  Future<Activity> cancelActivity(String activityId) async {
+    await _latency();
+    final idx = _activities.indexWhere((a) => a.id == activityId);
+    if (idx == -1) throw StateError('Activity not found: $activityId');
+    final updated = _activities[idx].copyWith(cancelled: true);
+    _activities[idx] = updated;
+    _changed();
     return updated;
   }
 

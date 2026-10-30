@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -5,10 +6,11 @@ import '../../core/analytics/analytics_service.dart';
 import '../../core/l10n/app_localizations.dart';
 import '../../core/theme/app_theme.dart';
 import '../../data/auth/auth_service.dart';
+import 'email_auth_screen.dart';
 
-/// Full-screen branded sign-in shown when signed out. A single "Continue with
-/// Google" button drives [AuthService.signInWithGoogle]; the auth gate in
-/// [app.dart] swaps to the home shell once signed in.
+/// Full-screen branded sign-in shown when signed out. "Continue with Apple"
+/// (iOS only, listed first per App Store 4.8), Google, and email drive
+/// [AuthService]; the auth gate in [app.dart] swaps to the home shell.
 class SignInScreen extends StatefulWidget {
   const SignInScreen({super.key});
 
@@ -17,30 +19,56 @@ class SignInScreen extends StatefulWidget {
 }
 
 class _SignInScreenState extends State<SignInScreen> {
-  bool _busy = false;
-  bool _failed = false;
+  // Which provider's flow is running ('google' / 'apple'), or null if idle.
+  String? _busyProvider;
+  // i18n key of the error to show, or null.
+  String? _errorKey;
+  bool _showEmail = false;
 
-  Future<void> _signIn() async {
+  bool get _busy => _busyProvider != null;
+
+  static bool get _showApple => defaultTargetPlatform == TargetPlatform.iOS;
+
+  Future<void> _signIn(String provider) async {
     final analytics = context.read<AnalyticsService>();
     final auth = context.read<AuthService>();
-    analytics.buttonClicked('sign_in_google');
+    analytics.buttonClicked('sign_in_$provider');
     setState(() {
-      _busy = true;
-      _failed = false;
+      _busyProvider = provider;
+      _errorKey = null;
     });
     try {
-      await auth.signInWithGoogle();
+      if (provider == 'apple') {
+        await auth.signInWithApple();
+      } else {
+        await auth.signInWithGoogle();
+      }
       analytics.actionSuccess('signIn');
       // No navigation needed — the auth gate rebuilds on the auth state change.
+    } on SignInCancelled {
+      // User closed the sheet: nothing to report.
+    } on AccountExistsWithOtherProvider catch (e) {
+      if (mounted) {
+        setState(() {
+          _errorKey = e.existingProvider == 'google.com'
+              ? 'auth.accountExistsUseGoogle'
+              : 'auth.accountExistsOtherProvider';
+        });
+      }
     } catch (_) {
-      if (mounted) setState(() => _failed = true);
+      if (mounted) setState(() => _errorKey = 'auth.error');
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) setState(() => _busyProvider = null);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_showEmail) {
+      return EmailAuthScreen(
+        onBack: () => setState(() => _showEmail = false),
+      );
+    }
     final l = AppLocalizations.of(context);
     final theme = Theme.of(context);
 
@@ -69,24 +97,112 @@ class _SignInScreenState extends State<SignInScreen> {
                   ),
                 ),
                 const Spacer(flex: 4),
-                if (_failed) ...[
+                if (_errorKey != null) ...[
                   Text(
-                    l.tr('auth.error'),
+                    l.tr(_errorKey!),
                     textAlign: TextAlign.center,
                     style: theme.textTheme.bodyMedium
                         ?.copyWith(color: Colors.white),
                   ),
                   const SizedBox(height: 12),
                 ],
+                if (_showApple) ...[
+                  _AppleButton(
+                    busy: _busyProvider == 'apple',
+                    label: _busyProvider == 'apple'
+                        ? l.tr('auth.signingIn')
+                        : l.tr('auth.continueWithApple'),
+                    onTap: _busy ? null : () => _signIn('apple'),
+                  ),
+                  const SizedBox(height: 12),
+                ],
                 _GoogleButton(
-                  busy: _busy,
-                  label: _busy
+                  busy: _busyProvider == 'google',
+                  label: _busyProvider == 'google'
                       ? l.tr('auth.signingIn')
                       : l.tr('auth.continueWithGoogle'),
-                  onTap: _busy ? null : _signIn,
+                  onTap: _busy ? null : () => _signIn('google'),
+                ),
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  onPressed: _busy
+                      ? null
+                      : () => setState(() {
+                          _errorKey = null;
+                          _showEmail = true;
+                        }),
+                  icon: const Icon(Icons.email_outlined),
+                  label: Text(l.tr('auth.continueWithEmail')),
+                  style: OutlinedButton.styleFrom(
+                    backgroundColor: const Color(0xFF632F29),
+                    foregroundColor: Colors.white,
+                    disabledBackgroundColor: const Color(0xFF8A554C),
+                    disabledForegroundColor: const Color(0xFFFFEAE5),
+                    minimumSize: const Size.fromHeight(56),
+                    side: BorderSide.none,
+                    shape: const StadiumBorder(),
+                    textStyle: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
                 ),
               ],
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Black pill "Continue with Apple" button (Apple HIG black style), same size
+/// as the Google button; shows a spinner while busy.
+class _AppleButton extends StatelessWidget {
+  const _AppleButton({
+    required this.busy,
+    required this.label,
+    required this.onTap,
+  });
+
+  final bool busy;
+  final String label;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.black,
+      borderRadius: BorderRadius.circular(28),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(28),
+        child: SizedBox(
+          height: 56,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              if (busy)
+                const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.4,
+                    color: Colors.white,
+                  ),
+                )
+              else
+                const Icon(Icons.apple, color: Colors.white, size: 24),
+              const SizedBox(width: 12),
+              Text(
+                label,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 16,
+                ),
+              ),
+            ],
           ),
         ),
       ),

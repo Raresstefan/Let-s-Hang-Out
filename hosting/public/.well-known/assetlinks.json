@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.hangout.hangout",
+      "sha256_cert_fingerprints": [
+        "2A:5A:23:42:DE:F7:CA:7D:C3:AA:FA:0F:15:88:C5:28:60:F8:4D:1F:11:03:C2:F5:12:24:3E:65:16:BE:30:ED"
+      ]
+    }
+  }
+]

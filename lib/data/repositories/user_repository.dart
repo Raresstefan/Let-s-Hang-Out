@@ -6,7 +6,7 @@ import '../../domain/models/app_user.dart';
 /// hydrate the owner's editable profile (bio + interests).
 abstract class UserRepository {
   /// Writes only the identity fields (display name + avatar) for [id]. Used at
-  /// sign-in so it never clobbers the user's saved [AppUser.bio] /
+  /// sign-in; preserves an existing avatar and the user's saved [AppUser.bio] /
   /// [AppUser.interests], which are edited separately via [upsertProfile].
   Future<void> upsertIdentity(
     String id, {

@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../core/analytics/analytics_service.dart';
 import '../../core/l10n/app_localizations.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/widgets/cover_image.dart';
 import '../../data/auth/auth_service.dart';
 import '../../data/repositories/activity_repository.dart';
 import '../../data/repositories/user_repository.dart';
@@ -57,9 +58,9 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   void initState() {
     super.initState();
     _profile = widget.initialProfile;
-    context
-        .read<AnalyticsService>()
-        .activityOnLoad('user_profile_${widget.userId}');
+    context.read<AnalyticsService>().activityOnLoad(
+      'user_profile_${widget.userId}',
+    );
     _isSelf = context.read<AuthService>().currentUserId == widget.userId;
     _load();
     _loadHostStats();
@@ -70,16 +71,20 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
 
   Future<void> _loadHostStats() async {
     try {
-      final stats =
-          await context.read<ActivityRepository>().hostStats(widget.userId);
+      final stats = await context.read<ActivityRepository>().hostStats(
+        widget.userId,
+      );
       if (mounted) setState(() => _hostStats = stats);
-    } catch (_) {/* leave empty */}
+    } catch (_) {
+      /* leave empty */
+    }
   }
 
   Future<void> _load() async {
     try {
-      final fetched =
-          await context.read<UserRepository>().fetchProfile(widget.userId);
+      final fetched = await context.read<UserRepository>().fetchProfile(
+        widget.userId,
+      );
       if (!mounted) return;
       setState(() {
         if (fetched != null) _profile = fetched;
@@ -100,8 +105,9 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
 
   Future<void> _loadFriendStatus() async {
     try {
-      final status =
-          await context.read<FriendsController>().statusWith(widget.userId);
+      final status = await context.read<FriendsController>().statusWith(
+        widget.userId,
+      );
       if (!mounted) return;
       setState(() => _friendStatus = status);
     } catch (_) {
@@ -179,7 +185,10 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   Widget _buildFriendButton(AppLocalizations l) {
     if (_friendBusy) {
       return const SizedBox(
-        height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2));
+        height: 20,
+        width: 20,
+        child: CircularProgressIndicator(strokeWidth: 2),
+      );
     }
     switch (_friendStatus!) {
       case FriendshipStatus.none:
@@ -220,8 +229,8 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     final name = _isDeletedUser
         ? l.tr('userProfile.deletedUser')
         : (p != null && p.displayName.trim().isNotEmpty)
-            ? p.displayName
-            : l.tr('userProfile.unknown');
+        ? p.displayName
+        : l.tr('userProfile.unknown');
     final handle = name.split(' ').first.toLowerCase();
     final hasPhoto = p?.avatarUrl != null && p!.avatarUrl!.isNotEmpty;
     final blocked = context.watch<SafetyController>().isBlocked(widget.userId);
@@ -240,9 +249,11 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                 ),
                 PopupMenuItem(
                   value: blocked ? 'unblock' : 'block',
-                  child: Text(blocked
-                      ? l.tr('safety.unblock')
-                      : l.tr('safety.blockUser', {'name': name})),
+                  child: Text(
+                    blocked
+                        ? l.tr('safety.unblock')
+                        : l.tr('safety.blockUser', {'name': name}),
+                  ),
                 ),
               ],
             ),
@@ -263,7 +274,9 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                 gradient: hasPhoto ? null : AppTheme.brandGradient,
                 image: hasPhoto
                     ? DecorationImage(
-                        image: NetworkImage(p.avatarUrl!), fit: BoxFit.cover)
+                        image: CoverImage.providerFor(p.avatarUrl!),
+                        fit: BoxFit.cover,
+                      )
                     : null,
                 boxShadow: AppTheme.softShadow(opacity: 0.14, blur: 18),
               ),
@@ -272,23 +285,27 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                   : Text(
                       _initial(name),
                       style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w800,
-                          fontSize: 44),
+                        color: Colors.white,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 44,
+                      ),
                     ),
             ),
           ),
           const SizedBox(height: 14),
           Center(
-            child: Text(name,
-                style: theme.textTheme.headlineSmall,
-                textAlign: TextAlign.center),
+            child: Text(
+              name,
+              style: theme.textTheme.headlineSmall,
+              textAlign: TextAlign.center,
+            ),
           ),
           Center(
             child: Text(
               l.tr('profile.handle', {'handle': handle}),
-              style: theme.textTheme.bodyMedium
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
             ),
           ),
           // ---- Host reputation ----
@@ -296,8 +313,10 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
             const SizedBox(height: 10),
             Center(
               child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
                   color: AppTheme.seed.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(20),
@@ -305,8 +324,11 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.star_rounded,
-                        size: 18, color: AppTheme.seed),
+                    const Icon(
+                      Icons.star_rounded,
+                      size: 18,
+                      color: AppTheme.seed,
+                    ),
                     const SizedBox(width: 4),
                     Text(
                       l.tr('userProfile.hostRating', {
@@ -314,9 +336,10 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                         'count': _hostStats.hostedCount,
                       }),
                       style: const TextStyle(
-                          color: AppTheme.seed,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 13),
+                        color: AppTheme.seed,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                      ),
                     ),
                   ],
                 ),
@@ -327,8 +350,10 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
             const SizedBox(height: 10),
             Center(
               child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 5,
+                ),
                 decoration: BoxDecoration(
                   color: AppTheme.accent.withValues(alpha: 0.14),
                   borderRadius: BorderRadius.circular(20),
@@ -336,17 +361,24 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.star_rounded,
-                        size: 16, color: AppTheme.accent),
+                    const Icon(
+                      Icons.star_rounded,
+                      size: 16,
+                      color: AppTheme.accent,
+                    ),
                     const SizedBox(width: 4),
                     Text(
-                        l.tr(_isDeletedUser
+                      l.tr(
+                        _isDeletedUser
                             ? 'activity.detail.formerHost'
-                            : 'activity.detail.host'),
-                        style: const TextStyle(
-                            color: AppTheme.accent,
-                            fontWeight: FontWeight.w700,
-                            fontSize: 12)),
+                            : 'activity.detail.host',
+                      ),
+                      style: const TextStyle(
+                        color: AppTheme.accent,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 12,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -356,9 +388,12 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
           if (blocked) ...[
             const SizedBox(height: 18),
             Center(
-              child: Text(l.tr('safety.blockedBanner'),
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant)),
+              child: Text(
+                l.tr('safety.blockedBanner'),
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
             ),
           ],
 
@@ -376,23 +411,23 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
           if (p != null && p.bio.trim().isNotEmpty) ...[
             Text(l.tr('userProfile.about'), style: theme.textTheme.titleMedium),
             const SizedBox(height: 8),
-            Text(p.bio,
-                style: theme.textTheme.bodyMedium?.copyWith(height: 1.4)),
+            Text(
+              p.bio,
+              style: theme.textTheme.bodyMedium?.copyWith(height: 1.4),
+            ),
             const SizedBox(height: 24),
           ],
 
           // ---- Interests ----
           if (p != null && p.interests.isNotEmpty) ...[
-            Text(l.tr('profile.interests'),
-                style: theme.textTheme.titleMedium),
+            Text(l.tr('profile.interests'), style: theme.textTheme.titleMedium),
             const SizedBox(height: 12),
             Wrap(
               spacing: 8,
               runSpacing: 8,
               children: [
                 for (final id in p.interests)
-                  _ReadOnlyInterestChip(
-                      interest: InterestCatalog.resolve(id)),
+                  _ReadOnlyInterestChip(interest: InterestCatalog.resolve(id)),
               ],
             ),
           ],
@@ -404,18 +439,20 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
               child: Center(child: CircularProgressIndicator()),
             )
           else if (!_loading &&
-              (p == null ||
-                  (p.bio.trim().isEmpty && p.interests.isEmpty)))
+              (p == null || (p.bio.trim().isEmpty && p.interests.isEmpty)))
             Padding(
               padding: const EdgeInsets.only(top: 32),
               child: Center(
                 child: Text(
-                  l.tr(_isDeletedUser
-                      ? 'userProfile.deletedUserBody'
-                      : 'userProfile.empty'),
+                  l.tr(
+                    _isDeletedUser
+                        ? 'userProfile.deletedUserBody'
+                        : 'userProfile.empty',
+                  ),
                   textAlign: TextAlign.center,
-                  style: theme.textTheme.bodyMedium
-                      ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ),
             ),
@@ -427,11 +464,17 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   Future<void> _onMenu(String action, String name) async {
     switch (action) {
       case 'report':
-        await showReportSheet(context,
-            target: ReportTarget.user, targetId: widget.userId);
+        await showReportSheet(
+          context,
+          target: ReportTarget.user,
+          targetId: widget.userId,
+        );
       case 'block':
-        final ok = await confirmAndBlock(context,
-            userId: widget.userId, name: name);
+        final ok = await confirmAndBlock(
+          context,
+          userId: widget.userId,
+          name: name,
+        );
         if (ok && mounted) await _loadFriendStatus();
       case 'unblock':
         await unblockUser(context, userId: widget.userId, name: name);

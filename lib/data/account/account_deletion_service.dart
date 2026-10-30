@@ -52,7 +52,16 @@ class AccountDeletionService {
   /// Runs the full cascade (hosted/joined activities → created/joined
   /// circles → friendships → profile), then deletes the Firebase Auth
   /// account for [uid].
-  Future<void> deleteAccountAndData(String uid) async {
+  Future<void> deleteAccountAndData(String uid, {String? password}) async {
+    if (_auth.requiresPasswordForDeletion) {
+      if (password == null || password.isEmpty) {
+        throw const EmailAuthException(EmailAuthFailure.invalidCredentials);
+      }
+      await _auth.reauthenticateWithPassword(password);
+    }
+    // Reauthenticate before touching data so cancellation or a wrong password
+    // cannot leave an account partially deleted.
+    await _auth.prepareAccountDeletion();
     final profile = await _users.fetchProfile(uid);
     // Passed verbatim: the rules verify system-line names against the profile.
     final displayName = profile?.displayName ?? '';

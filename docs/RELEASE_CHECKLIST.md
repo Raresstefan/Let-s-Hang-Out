@@ -51,7 +51,14 @@ developer. Costs: Google Play **$25 one-time**, Apple **$99/year**. Docs hosting
 - [ ] **B2 — Keystore.** Follow `android/key.properties.template`:
       generate the upload keystore, create `android/key.properties`, and register
       the upload key SHA-1 + SHA-256 in Firebase (so Google Sign-In works in release).
-- [ ] Set `CFBundleDisplayName` to "Hang Out" in `ios/Runner/Info.plist`.
+- [x] Set `CFBundleDisplayName` to "Hang Out" in `ios/Runner/Info.plist`;
+      added `NSPhotoLibraryUsageDescription` + `NSAppleMusicUsageDescription`
+      (file_picker links those APIs → ITMS-90683 without them).
+- [x] **Toolchain.** Requires Flutter ≥ 3.47 (built with 3.47.7; older can't
+      build iOS with `firebase_auth` 6.7.0). Gradle 8.14.3 + AGP 8.11.1.
+      `Podfile.lock` on Firebase SDK 12.19.0. iOS uses CocoaPods
+      (`enable-swift-package-manager: false` in `pubspec.yaml`, because
+      file_picker 11.x's Swift package doesn't resolve).
 - [ ] Verify `targetSdk` meets Play's current minimum target API level.
 - [x] README updated (no longer claims "mock only").
 - [ ] Commit the regenerated app icons (already on disk, uncommitted).
@@ -60,6 +67,38 @@ developer. Costs: Google Play **$25 one-time**, Apple **$99/year**. Docs hosting
 - [ ] **Publish** `firestore.rules` in the Firebase console and **create the composite
       index** from `firestore.indexes.json` (`activities`: `circleId` ASC + `startAt` ASC).
       Without the index the Discover feed query fails.
+      (Re-publish after the city filter: rules now validate the optional
+      `city` field, max 60 chars, and let hosts edit it.)
+- [x] City filter on Discover: options come from cities of live activities;
+      new activities require a City. Activities created before this have no
+      city and only show under "All cities". Distance filter is deferred (it
+      needs location permission + privacy label updates).
+- [x] Story card: activity details → Share → "Share as story" exports a
+      1080×1920 PNG ("I'm going to…" + QR + link) via the share sheet; also
+      offered in a snackbar right after joining. Hidden for circle activities.
+      Generated on-device, no new data collected (no privacy label change). The
+      QR/link only works once Hosting is deployed (`/a/<id>`).
+- [x] Host edit / cancel: activity details → ⋯ → "Edit details" (title,
+      category, description, place, city, time; cover not editable) or "Cancel
+      hangout" (soft cancel, one-way). Only before the start time. Cancelled
+      hangouts leave Discover, can't be joined, show "Cancelled" in Hangouts and
+      a banner on details; members get a line in the group chat.
+      **Requires re-publishing `firestore.rules`** (new `cancelled` field,
+      `updated`/`cancelled` system messages).
+- [x] Hangouts rows and activity chat headers observe local activity changes
+      immediately, including edited titles and cancelled status.
+- [x] Other participants see host edits/cancellations live (Firestore listeners
+      on Hangouts, activity details and activity chat headers). Hangouts shows
+      a retry state if it can't load.
+- [x] Chat sends are WhatsApp-style: clock while sending, single check once the
+      server has it, "Not sent. Tap to retry." on failure (long-press to
+      delete). Client-generated message ids prevent duplicate retries. No
+      delivered/read receipts.
+- [x] Profile and cover image selection opens Photos on iOS; other platforms
+      retain the filtered file picker. Photo permission text also explains
+      saving story images.
+- [x] Selected profile photos are resized, saved to the user profile and restored
+      on reopening. Sign-in preserves the saved avatar; failed saves show an error.
 - [x] User safety (store requirement — Apple 1.2 / Play UGC policy): report user /
       activity / message, block & unblock, host can remove a member (who can't rejoin).
 - [x] Users must **accept the Terms + community rules** in-app (zero-tolerance wording)
@@ -72,6 +111,18 @@ developer. Costs: Google Play **$25 one-time**, Apple **$99/year**. Docs hosting
       at least daily (Apple expects action within 24h). Set `status` to `actioned` /
       `dismissed`; for abusive users disable the account in Firebase Auth. Mention
       the report/block tools in the App Review notes.
+- [x] **Shareable activity links** (`https://hang-out-129b5.web.app/a/<id>`): the share
+      message includes the link; tapping it opens the hangout in the app (Android App
+      Link + `hangout://activity/<id>` scheme), or a landing page in `hosting/public/`.
+- [ ] **Deploy the link landing page:** `firebase deploy --only hosting` (free on Spark).
+- [ ] **Android App Link verification:** add the **Play App Signing** SHA-256 (Play
+      Console → Setup → App signing) and the upload key SHA-256 to
+      `hosting/public/.well-known/assetlinks.json`, then redeploy hosting. It currently
+      only lists the debug key, so release builds open links via the landing page.
+- [ ] **iOS links (needs paid Apple account):** set `APP_STORE_URL` in
+      `hosting/public/a.html`; optionally add Universal Links (Associated Domains
+      `applinks:hang-out-129b5.web.app` + `apple-app-site-association` with Team ID).
+      Until then iOS opens links through the landing page's `hangout://` button.
 
 ## C. Store forms — declare data consistently
 
@@ -120,11 +171,18 @@ The app never calls `setUserId`, so Analytics data isn't tied to the account by 
 - [ ] Store listing: screenshots per device size, description, keywords, age rating.
 - [ ] Build: `flutter build ipa` (or archive in Xcode) → upload via Transporter/Xcode.
 - [ ] Submit for App Review. Provide a demo Google account for reviewers.
-- [ ] If rejected under guideline 4.8: add **Sign in with Apple** (required when you
-      offer a third-party sign-in like Google).
+- [ ] Add **Sign in with Apple** before submitting (guideline 4.8 requires it when you
+      offer a third-party sign-in like Google). Step-by-step: `docs/APPLE_SIGN_IN_SETUP.md`.
 
 ## Verification (before submitting)
 - [ ] `flutter analyze` clean.
+- [ ] In Firebase Authentication, confirm Email/Password is enabled. On a real
+      device, verify account creation, email delivery and verification, sign-in,
+      password reset, and password confirmation when deleting an account.
+- [ ] Publish the updated `firestore.rules` and `storage.rules` in the Firebase
+      console. Until both are published, email verification is enforced by the
+      app but not by those backend rules.
+- [ ] Publish the updated privacy policy and terms where they are hosted.
 - [ ] `flutter build appbundle --release` and `flutter build ipa` both succeed.
 - [ ] Install release AAB (internal testing track) + a TestFlight build on real
       devices → Google Sign-In works and Firestore reads/writes succeed

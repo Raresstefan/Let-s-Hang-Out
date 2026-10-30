@@ -139,7 +139,7 @@ class _ActivityCardState extends State<ActivityCard> {
                       const SizedBox(height: 8),
                       _MetaRow(
                         startAt: a.startAt,
-                        place: a.placeSuggestion,
+                        place: a.placeWithCity,
                         enrolled: l.tr(
                             'activity.enrolledCount', {'count': a.enrolledCount}),
                         l: l,

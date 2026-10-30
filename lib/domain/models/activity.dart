@@ -1,4 +1,5 @@
 import 'activity_category.dart';
+import 'city_names.dart';
 
 /// A socialising activity created by a host that other users can join.
 class Activity {
@@ -10,6 +11,7 @@ class Activity {
     required this.startAt,
     required this.hostId,
     required this.category,
+    this.city = '',
     this.coverImageUrl,
     this.memberIds = const [],
     this.likedBy = const [],
@@ -17,6 +19,7 @@ class Activity {
     this.circleId,
     this.ratings = const {},
     this.removedIds = const [],
+    this.cancelled = false,
   });
 
   final String id;
@@ -26,6 +29,11 @@ class Activity {
   final DateTime startAt;
   final String hostId;
   final ActivityCategory category;
+
+  /// City the hangout happens in, typed by the host. Empty on activities
+  /// created before the field existed; those only show under "All cities".
+  final String city;
+
   final String? coverImageUrl;
 
   /// All enrolled users including the host.
@@ -47,6 +55,21 @@ class Activity {
   /// from their feed.
   final List<String> removedIds;
 
+  /// The host called it off. Kept (not deleted) so members see "Cancelled"
+  /// in their hangouts and chat instead of it silently vanishing.
+  final bool cancelled;
+
+  /// "Old City Pub, Amsterdam" — the place plus its city, unless the place
+  /// already names the city. Also the query used for map directions.
+  String get placeWithCity {
+    final place = placeSuggestion.trim();
+    final c = city.trim();
+    if (c.isEmpty) return place;
+    if (place.isEmpty) return c;
+    if (cityKey(place).contains(cityKey(c))) return place;
+    return '$place, $c';
+  }
+
   bool isRemoved(String userId) => removedIds.contains(userId);
 
   int get enrolledCount => memberIds.length;
@@ -62,6 +85,13 @@ class Activity {
   bool isLikedBy(String userId) => likedBy.contains(userId);
 
   Activity copyWith({
+    String? title,
+    String? description,
+    String? placeSuggestion,
+    String? city,
+    DateTime? startAt,
+    ActivityCategory? category,
+    bool? cancelled,
     List<String>? memberIds,
     List<String>? likedBy,
     Map<String, int>? ratings,
@@ -70,12 +100,13 @@ class Activity {
   }) =>
       Activity(
         id: id,
-        title: title,
-        description: description,
-        placeSuggestion: placeSuggestion,
-        startAt: startAt,
+        title: title ?? this.title,
+        description: description ?? this.description,
+        placeSuggestion: placeSuggestion ?? this.placeSuggestion,
+        startAt: startAt ?? this.startAt,
         hostId: hostId,
-        category: category,
+        category: category ?? this.category,
+        city: city ?? this.city,
         coverImageUrl: coverImageUrl ?? this.coverImageUrl,
         memberIds: memberIds ?? this.memberIds,
         likedBy: likedBy ?? this.likedBy,
@@ -83,5 +114,6 @@ class Activity {
         circleId: circleId,
         ratings: ratings ?? this.ratings,
         removedIds: removedIds ?? this.removedIds,
+        cancelled: cancelled ?? this.cancelled,
       );
 }

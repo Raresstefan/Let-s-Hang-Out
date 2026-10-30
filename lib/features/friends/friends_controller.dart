@@ -34,8 +34,11 @@ class FriendsController extends ChangeNotifier {
         _analytics = analytics {
     // Block/unblock changes the friends list and what's visible.
     _safety?.addListener(load);
-    _listenIncoming();
-    load();
+    // This controller outlives sign-out (app-wide provider), so re-bind to
+    // whoever signs in next instead of keeping the previous account's data
+    // and its dead (permission-denied) incoming-requests stream.
+    _auth.addListener(_onAuthChanged);
+    _onAuthChanged();
   }
 
   final FriendRepository _friends;
@@ -70,13 +73,32 @@ class FriendsController extends ChangeNotifier {
 
   String? get _uid => _auth.currentUserId;
 
+  /// The user this controller's state and streams belong to.
+  String? _boundUid;
+
+  void _onAuthChanged() {
+    final uid = _uid;
+    if (uid == _boundUid) return;
+    _boundUid = uid;
+    _incomingSub?.cancel();
+    _incomingSub = null;
+    _friendsList = [];
+    _incoming = [];
+    _outgoing = [];
+    _searchResults = [];
+    notifyListeners();
+    if (uid != null) load();
+  }
+
   void _listenIncoming() {
     final uid = _uid;
     if (uid == null) return;
     _incomingSub?.cancel();
     _incomingSub = _friends.incomingRequests(uid).listen(
       (reqs) async {
-        _incoming = await _withProfiles(reqs, useFrom: true);
+        final entries = await _withProfiles(reqs, useFrom: true);
+        if (uid != _boundUid) return; // signed out/switched meanwhile
+        _incoming = entries;
         notifyListeners();
       },
       onError: (_) {
@@ -117,11 +139,14 @@ class FriendsController extends ChangeNotifier {
     try {
       // Friends from the current user's own profile (mutual friendIds).
       final me = await _users.fetchProfile(uid);
-      _friendsList = me == null || me.friendIds.isEmpty
-          ? []
+      final friends = me == null || me.friendIds.isEmpty
+          ? <AppUser>[]
           : await _users.fetchProfiles(me.friendIds);
       final out = await _friends.outgoingRequests(uid);
-      _outgoing = await _withProfiles(out, useFrom: false);
+      final outgoing = await _withProfiles(out, useFrom: false);
+      if (uid != _boundUid) return; // signed out/switched meanwhile
+      _friendsList = friends;
+      _outgoing = outgoing;
     } catch (_) {
       // Keep last-known data on transient failure.
     } finally {
@@ -229,6 +254,7 @@ class FriendsController extends ChangeNotifier {
   @override
   void dispose() {
     _safety?.removeListener(load);
+    _auth.removeListener(_onAuthChanged);
     _incomingSub?.cancel();
     super.dispose();
   }

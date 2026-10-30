@@ -19,7 +19,9 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     function signedIn() {
-      return request.auth != null;
+      return request.auth != null &&
+        (request.auth.token.firebase.sign_in_provider != 'password' ||
+         request.auth.token.email_verified == true);
     }
 
     function me() {
@@ -210,6 +212,12 @@ service cloud.firestore {
         return data.get('circleId', null) == null;
       }
 
+      // Optional (older activities have none); short free text otherwise.
+      function validCity(data) {
+        return data.get('city', '') is string &&
+          data.get('city', '').size() <= 60;
+      }
+
       function canSee(data) {
         return isPublic(data) ||
           me() in data.memberIds ||
@@ -233,6 +241,7 @@ service cloud.firestore {
         request.resource.data.description is string &&
         request.resource.data.description.size() <= 2000 &&
         request.resource.data.startAt is timestamp &&
+        validCity(request.resource.data) &&
         request.resource.data.get('likedBy', []).size() == 0 &&
         request.resource.data.get('ratings', {}).size() == 0 &&
         request.resource.data.get('isSuggested', false) == false &&
@@ -249,15 +258,22 @@ service cloud.firestore {
         );
 
       allow update: if signedIn() && (
-        // 1. Host edits details / removes members. Can't touch hostId,
-        //    likes, ratings, circleId or isSuggested; can't add members.
-        //    `removedIds` (rejoin ban) only grows, and only with uids that
-        //    were members.
+        // 1. Host edits details / removes members / cancels. Can't touch
+        //    hostId, likes, ratings, circleId or isSuggested; can't add
+        //    members. `removedIds` (rejoin ban) only grows, and only with uids
+        //    that were members. A cancelled activity is frozen (cancel is
+        //    one-way) and a moved start time must be in the future.
         (
           resource.data.hostId == me() &&
+          resource.data.get('cancelled', false) == false &&
+          request.resource.data.get('cancelled', false) is bool &&
+          (!('startAt' in changed()) ||
+            request.resource.data.startAt > request.time) &&
+          request.resource.data.description is string &&
+          request.resource.data.description.size() <= 2000 &&
           changed().hasOnly(['title', 'description', 'placeSuggestion',
-                             'startAt', 'category', 'coverImageUrl',
-                             'memberIds', 'removedIds']) &&
+                             'city', 'startAt', 'category', 'coverImageUrl',
+                             'memberIds', 'removedIds', 'cancelled']) &&
           me() in request.resource.data.memberIds &&
           onlyRemoves(resource.data.memberIds, request.resource.data.memberIds) &&
           request.resource.data.get('removedIds', []).toSet().hasAll(
@@ -267,7 +283,8 @@ service cloud.firestore {
             .difference(resource.data.memberIds.toSet()).size() == 0 &&
           request.resource.data.title is string &&
           request.resource.data.title.size() > 0 &&
-          request.resource.data.title.size() <= 120
+          request.resource.data.title.size() <= 120 &&
+          validCity(request.resource.data)
         ) ||
         // 2. Join: add exactly own uid to an upcoming activity you can see,
         //    unless the host removed you or has blocked you.
@@ -275,6 +292,7 @@ service cloud.firestore {
           changed().hasOnly(['memberIds']) &&
           addsOnlyMe(resource.data.memberIds, request.resource.data.memberIds) &&
           resource.data.startAt > request.time &&
+          resource.data.get('cancelled', false) == false &&
           canSee(resource.data) &&
           !(me() in resource.data.get('removedIds', [])) &&
           !(me() in blockedBy(resource.data.hostId))
@@ -397,8 +415,13 @@ service cloud.firestore {
               (msg().event == 'joined' &&
                 msg().subjectId in get(docPath('chats', chatId)).data.memberIds) ||
               // "{name} left" — only about yourself.
-              (msg().event in ['hostLeft', 'creatorLeft'] &&
+              (msg().event in ['hostLeft', 'creatorLeft', 'left'] &&
                 msg().subjectId == me()) ||
+              // "{name} updated / cancelled the hangout" — only the host of
+              // this activity's chat, about themselves.
+              (msg().event in ['updated', 'cancelled'] &&
+                msg().subjectId == me() &&
+                get(docPath('activities', chatId)).data.hostId == me()) ||
               // "{name} planned {title}" — a hangout you host in this circle.
               (msg().event == 'planned' &&
                 msg().subjectId == me() &&

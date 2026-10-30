@@ -5,6 +5,7 @@ import '../../core/analytics/analytics_service.dart';
 import '../../core/l10n/app_localizations.dart';
 import '../../core/moderation/content_filter.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/widgets/cover_image.dart';
 import '../../domain/models/app_user.dart';
 import '../friends/friends_controller.dart';
 import 'circles_controller.dart';
@@ -25,7 +26,18 @@ class _CreateCircleSheetState extends State<CreateCircleSheet> {
   bool _submitting = false;
 
   static const _emojiChoices = [
-    '👥', '🎾', '🍺', '☕', '🍔', '🎵', '⚽', '🏀', '🎬', '🧗', '🎲', '✈️',
+    '👥',
+    '🎾',
+    '🍺',
+    '☕',
+    '🍔',
+    '🎵',
+    '⚽',
+    '🏀',
+    '🎬',
+    '🧗',
+    '🎲',
+    '✈️',
   ];
 
   @override
@@ -50,16 +62,18 @@ class _CreateCircleSheetState extends State<CreateCircleSheet> {
   Future<void> _create() async {
     if (!_canCreate) return;
     if (ContentFilter.hasBlocked(_name.text)) {
-      setState(() =>
-          _nameError = AppLocalizations.of(context).tr('moderation.blocked'));
+      setState(
+        () =>
+            _nameError = AppLocalizations.of(context).tr('moderation.blocked'),
+      );
       return;
     }
     setState(() => _submitting = true);
     final circle = await context.read<CirclesController>().createCircle(
-          name: _name.text.trim(),
-          emoji: _emoji,
-          inviteeIds: _invitees.toList(),
-        );
+      name: _name.text.trim(),
+      emoji: _emoji,
+      inviteeIds: _invitees.toList(),
+    );
     if (!mounted) return;
     Navigator.of(context).pop(circle?.id);
   }
@@ -94,8 +108,10 @@ class _CreateCircleSheetState extends State<CreateCircleSheet> {
                 ),
               ),
             ),
-            Text(l.tr('circles.createTitle'),
-                style: theme.textTheme.titleLarge),
+            Text(
+              l.tr('circles.createTitle'),
+              style: theme.textTheme.titleLarge,
+            ),
             const SizedBox(height: 16),
             TextField(
               controller: _name,
@@ -141,16 +157,19 @@ class _CreateCircleSheetState extends State<CreateCircleSheet> {
               ],
             ),
             const SizedBox(height: 20),
-            Text(l.tr('circles.selectMembers'),
-                style: theme.textTheme.titleSmall),
+            Text(
+              l.tr('circles.selectMembers'),
+              style: theme.textTheme.titleSmall,
+            ),
             const SizedBox(height: 8),
             if (friends.isEmpty)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 8),
                 child: Text(
                   l.tr('circles.noFriendsToAdd'),
-                  style: theme.textTheme.bodyMedium
-                      ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
                 ),
               )
             else
@@ -180,7 +199,10 @@ class _CreateCircleSheetState extends State<CreateCircleSheet> {
                       height: 20,
                       width: 20,
                       child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Colors.white))
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
                   : Text(l.tr('circles.createCta')),
             ),
           ],
@@ -219,7 +241,9 @@ class _FriendPickTile extends StatelessWidget {
           gradient: hasPhoto ? null : AppTheme.brandGradient,
           image: hasPhoto
               ? DecorationImage(
-                  image: NetworkImage(user.avatarUrl!), fit: BoxFit.cover)
+                  image: CoverImage.providerFor(user.avatarUrl!),
+                  fit: BoxFit.cover,
+                )
               : null,
         ),
         child: hasPhoto
@@ -227,7 +251,9 @@ class _FriendPickTile extends StatelessWidget {
             : Text(
                 (name.isEmpty ? '?' : name[0]).toUpperCase(),
                 style: const TextStyle(
-                    color: Colors.white, fontWeight: FontWeight.w700),
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
       ),
       title: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis),

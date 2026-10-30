@@ -1,7 +1,8 @@
-import 'dart:typed_data';
-
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:image/image.dart' as image;
 
 import 'cover_image.dart';
 
@@ -13,6 +14,24 @@ const List<String> kImageExtensions = ['png', 'jpg', 'jpeg'];
 bool isAllowedImageName(String name) {
   final lower = name.toLowerCase();
   return kImageExtensions.any((e) => lower.endsWith('.$e'));
+}
+
+// Avatars live in the profile document. Bound the encoded size well below
+// Firestore's 1 MiB document limit, including base64 overhead.
+Future<String> avatarDataUrl(Uint8List bytes) => compute(_encodeAvatar, bytes);
+
+String _encodeAvatar(Uint8List bytes) {
+  final decoded = image.decodeImage(bytes);
+  if (decoded == null) throw StateError('The selected image could not be read');
+  final avatar = image.copyResizeCropSquare(
+    image.bakeOrientation(decoded),
+    size: 512,
+  );
+  final encoded = image.encodeJpg(avatar, quality: 80);
+  if (encoded.length > 256 * 1024) {
+    throw StateError('The selected image is too large for a profile photo');
+  }
+  return CoverImage.dataUrlFromBytes(encoded, 'jpg');
 }
 
 /// Outcome of an image pick. Exactly one of [dataUrl] or [error] is non-null.
@@ -43,9 +62,7 @@ class PickedImage {
 
   static PickedImage _success(Uint8List bytes, String name) {
     final ext = name.contains('.') ? name.split('.').last : 'png';
-    final contentType = ext.toLowerCase() == 'png'
-        ? 'image/png'
-        : 'image/jpeg';
+    final contentType = ext.toLowerCase() == 'png' ? 'image/png' : 'image/jpeg';
     return PickedImage._(
       bytes: bytes,
       dataUrl: CoverImage.dataUrlFromBytes(bytes, ext),
@@ -74,9 +91,22 @@ class PickedImage {
     return _fromBytes(bytes, file.name);
   }
 
-  /// Open the file browser and process the selection. Returns null if the user
-  /// cancelled.
+  /// Open Photos on iOS and the filtered file browser elsewhere.
+  /// Returns null if the user cancelled.
   static Future<PickedImage?> browse() async {
+    final usePhotos = !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
+    if (usePhotos) {
+      final photo = await ImagePicker().pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 90,
+        requestFullMetadata: false,
+      );
+      if (photo == null) return null;
+      if (!isAllowedImageName(photo.name)) {
+        return const PickedImage._(error: _wrongType);
+      }
+      return _fromBytes(await photo.readAsBytes(), photo.name);
+    }
     final result = await FilePicker.pickFiles(
       type: FileType.custom,
       allowedExtensions: kImageExtensions,

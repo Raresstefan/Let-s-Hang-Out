@@ -11,6 +11,19 @@ abstract class ActivityRepository {
   /// Activities the [userId] is enrolled in (joined or hosting).
   Future<List<Activity>> fetchMyActivities(String userId);
 
+  /// A single activity by id, or null when it doesn't exist or the current
+  /// user can't see it (e.g. a circle hangout they're not in). Used to open
+  /// shared links.
+  Future<Activity?> fetchActivity(String activityId);
+
+  /// Live copy of one activity, updated whenever anyone (e.g. the host)
+  /// changes it. Emits null when it no longer exists; errors when the user
+  /// lost access to it.
+  Stream<Activity?> watchActivity(String activityId);
+
+  /// Live list of the activities [userId] is enrolled in, by start time.
+  Stream<List<Activity>> watchMyActivities(String userId);
+
   Future<Activity> createActivity(Activity activity);
 
   /// Adds [userId] to the activity's members and returns the updated activity.
@@ -37,4 +50,12 @@ abstract class ActivityRepository {
   /// Host-only: removes [memberId] from the activity and records them in
   /// `removedIds` so they can't rejoin. Returns the updated activity.
   Future<Activity> removeMember(String activityId, String memberId);
+
+  /// Host-only: saves edited details (title, description, place, city, start
+  /// time, category) of [activity] and returns the stored copy.
+  Future<Activity> updateActivity(Activity activity);
+
+  /// Host-only: marks the activity cancelled. Members keep it in their
+  /// hangouts (shown as cancelled); nobody can join it any more.
+  Future<Activity> cancelActivity(String activityId);
 }

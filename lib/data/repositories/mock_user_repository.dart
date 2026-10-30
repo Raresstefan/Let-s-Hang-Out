@@ -25,7 +25,12 @@ class MockUserRepository implements UserRepository {
   }) async {
     final existing = _profiles[id];
     _profiles[id] = (existing ?? AppUser(id: id, displayName: displayName))
-        .copyWith(displayName: displayName, avatarUrl: avatarUrl);
+        .copyWith(
+          displayName: displayName.isEmpty && existing != null
+              ? existing.displayName
+              : displayName,
+          avatarUrl: existing?.avatarUrl ?? avatarUrl,
+        );
   }
 
   @override

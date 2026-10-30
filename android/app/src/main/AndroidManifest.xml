@@ -3,6 +3,8 @@
          Flutter injects this automatically in debug; declare it explicitly so it
          is present in release builds. -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Re-schedules hangout reminders after a reboot (flutter_local_notifications). -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
     <application
         android:label="Hang Out"
         android:name="${applicationName}"
@@ -28,6 +30,24 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+            <!-- Shared activity links (lib/core/links/activity_links.dart) are
+                 handled by app_links, not Flutter's built-in router. -->
+            <meta-data android:name="flutter_deeplinking_enabled" android:value="false"/>
+            <!-- https://hang-out-129b5.web.app/a/<id>: verified App Link; needs
+                 hosting/public/.well-known/assetlinks.json deployed. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="https" android:host="hang-out-129b5.web.app" android:pathPrefix="/a/"/>
+            </intent-filter>
+            <!-- hangout://activity/<id>: the landing page's "Open in the app". -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="hangout" android:host="activity"/>
+            </intent-filter>
         </activity>
         <!-- The privacy policy states no advertising identifiers are collected. -->
         <meta-data
@@ -38,6 +58,16 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <!-- Hangout reminders (flutter_local_notifications). -->
+        <receiver android:exported="false" android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver" />
+        <receiver android:exported="false" android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED"/>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED"/>
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON"/>
+            </intent-filter>
+        </receiver>
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and
@@ -48,6 +78,19 @@
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
+        </intent>
+        <!-- "Get directions": detect installed map apps (url_launcher canLaunchUrl). -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="geo"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="waze"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="https"/>
         </intent>
     </queries>
 </manifest>

@@ -11,6 +11,7 @@ import '../../data/repositories/user_repository.dart';
 import '../../data/storage/activity_cover_storage.dart';
 import '../../domain/models/activity.dart';
 import '../../domain/models/activity_category.dart';
+import '../../domain/models/city_names.dart';
 import '../../domain/models/message.dart';
 import '../categories/activity_category_picker.dart';
 import '../feed/feed_controller.dart';
@@ -26,8 +27,14 @@ class CreateActivityScreen extends StatefulWidget {
     this.prefillMemberIds = const [],
     this.prefillTitle,
     this.prefillPlace,
+    this.prefillCity,
     this.prefillCategory,
+    this.editing,
   });
+
+  /// When set, the form edits this activity (host only) instead of creating
+  /// one. The cover photo and circle stay as they are.
+  final Activity? editing;
 
   /// When set, the created activity is linked to this circle and seeded with
   /// [prefillMemberIds] (the circle's members) — the "Plan a hangout" flow.
@@ -38,6 +45,7 @@ class CreateActivityScreen extends StatefulWidget {
   /// title / place / category). The start time is always re-picked.
   final String? prefillTitle;
   final String? prefillPlace;
+  final String? prefillCity;
   final ActivityCategory? prefillCategory;
 
   @override
@@ -49,6 +57,16 @@ class _CreateActivityScreenState extends State<CreateActivityScreen> {
   final _title = TextEditingController();
   final _description = TextEditingController();
   final _place = TextEditingController();
+  final _city = TextEditingController();
+
+  static const _maxCityLength = 60;
+
+  /// Cities that already have activities, so hosts pick an existing spelling.
+  late final List<String> _knownCities = context
+      .read<FeedController>()
+      .cityOptions
+      .map((o) => o.name)
+      .toList();
 
   PickedImage? _coverImage;
 
@@ -63,9 +81,25 @@ class _CreateActivityScreenState extends State<CreateActivityScreen> {
   @override
   void initState() {
     super.initState();
+    final editing = widget.editing;
+    if (editing != null) {
+      _title.text = editing.title;
+      _description.text = editing.description;
+      _place.text = editing.placeSuggestion;
+      _city.text = editing.city;
+      _startAt = editing.startAt;
+      _category = editing.category;
+      return;
+    }
     // Seed from prefills (e.g. "Hang again" reusing a past activity).
     if (widget.prefillTitle != null) _title.text = widget.prefillTitle!;
     if (widget.prefillPlace != null) _place.text = widget.prefillPlace!;
+    // "Hang again" reuses the old city; otherwise default to the city the
+    // feed is filtered on, which is most likely where the host is.
+    final prefill = (widget.prefillCity?.isNotEmpty ?? false)
+        ? widget.prefillCity!
+        : context.read<FeedController>().city ?? '';
+    _city.text = prefill.isEmpty ? '' : canonicalCity(prefill, _knownCities);
     if (widget.prefillCategory != null) _category = widget.prefillCategory!;
   }
 
@@ -74,6 +108,7 @@ class _CreateActivityScreenState extends State<CreateActivityScreen> {
     _title.dispose();
     _description.dispose();
     _place.dispose();
+    _city.dispose();
     super.dispose();
   }
 
@@ -84,17 +119,26 @@ class _CreateActivityScreenState extends State<CreateActivityScreen> {
       context: context,
       firstDate: now,
       lastDate: now.add(const Duration(days: 365)),
-      initialDate: now,
+      initialDate: (_startAt != null && _startAt!.isAfter(now))
+          ? _startAt!
+          : now,
     );
     if (date == null || !mounted) return;
     final time = await showTimePicker(
       context: context,
-      initialTime: TimeOfDay.now(),
+      initialTime: _startAt != null
+          ? TimeOfDay.fromDateTime(_startAt!)
+          : TimeOfDay.now(),
     );
     if (!mounted) return;
     setState(() {
-      _startAt = DateTime(date.year, date.month, date.day,
-          time?.hour ?? 12, time?.minute ?? 0);
+      _startAt = DateTime(
+        date.year,
+        date.month,
+        date.day,
+        time?.hour ?? 12,
+        time?.minute ?? 0,
+      );
       _startError = null; // clear any prior error once a date is chosen
     });
   }
@@ -139,12 +183,14 @@ class _CreateActivityScreenState extends State<CreateActivityScreen> {
     if (!fieldsValid || !startValid) return;
 
     setState(() => _submitting = true);
+    if (widget.editing != null) return _saveEdit(l);
 
     final draft = Activity(
       id: '',
       title: _title.text.trim(),
       description: _description.text.trim(),
       placeSuggestion: _place.text.trim(),
+      city: canonicalCity(_city.text, _knownCities),
       startAt: _startAt!,
       hostId: context.read<AuthService>().currentUserId!,
       category: _category,
@@ -178,6 +224,10 @@ class _CreateActivityScreenState extends State<CreateActivityScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(l.tr('activity.create.coverUploadFailed')),
+          duration: const Duration(seconds: 6),
+          // Actions make snack bars stay up by default; only screen-reader
+          // users keep this one until they act.
+          persist: MediaQuery.accessibleNavigationOf(context),
           action: SnackBarAction(
             label: l.tr('activity.create.coverRemove'),
             onPressed: () => setState(() => _coverImage = null),
@@ -191,9 +241,9 @@ class _CreateActivityScreenState extends State<CreateActivityScreen> {
       );
       if (!mounted) return;
       setState(() => _submitting = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(l.tr('activity.create.failed'))),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(l.tr('activity.create.failed'))));
       return;
     }
 
@@ -212,7 +262,9 @@ class _CreateActivityScreenState extends State<CreateActivityScreen> {
           title: created.title,
           activityId: created.id,
         );
-      } catch (_) {/* the hangout still exists; ignore */}
+      } catch (_) {
+        /* the hangout still exists; ignore */
+      }
     }
 
     if (!mounted) return;
@@ -222,15 +274,46 @@ class _CreateActivityScreenState extends State<CreateActivityScreen> {
     Navigator.of(context).pop(true);
   }
 
+  Future<void> _saveEdit(AppLocalizations l) async {
+    final edited = widget.editing!.copyWith(
+      title: _title.text.trim(),
+      description: _description.text.trim(),
+      placeSuggestion: _place.text.trim(),
+      city: canonicalCity(_city.text, _knownCities),
+      startAt: _startAt,
+      category: _category,
+    );
+    try {
+      await context.read<FeedController>().updateActivity(edited);
+    } catch (error, stackTrace) {
+      FlutterError.reportError(
+        FlutterErrorDetails(exception: error, stack: stackTrace),
+      );
+      if (!mounted) return;
+      setState(() => _submitting = false);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(l.tr('activity.edit.failed'))));
+      return;
+    }
+    if (!mounted) return;
+    Navigator.of(context).pop(true);
+  }
+
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
+    final isEdit = widget.editing != null;
     final dateLabel = _startAt == null
         ? l.tr('activity.placeholder.startDate')
         : _startAt!.toLocal().toString().substring(0, 16);
 
     return Scaffold(
-      appBar: AppBar(title: Text(l.tr('activity.create.title'))),
+      appBar: AppBar(
+        title: Text(
+          l.tr(isEdit ? 'activity.edit.title' : 'activity.create.title'),
+        ),
+      ),
       body: Form(
         key: _formKey,
         // After the first submit attempt, re-validate fields as the user edits
@@ -280,29 +363,36 @@ class _CreateActivityScreenState extends State<CreateActivityScreen> {
                   : null,
             ),
             const SizedBox(height: 16),
-            // Cover image is optional too — no error when missing.
-            _LabelRow(
-              label: l.tr('activity.label.coverImage'),
-              optionalText: l.tr('activity.label.optional'),
-            ),
-            const SizedBox(height: 6),
-            CoverDropZone(
-              category: _category,
-              onChanged: (image) {
-                final replacing = _coverImage != null && image != null;
-                _analytics.buttonClicked(
-                  image == null
-                      ? 'remove_activity_cover'
-                      : replacing
-                      ? 'replace_activity_cover'
-                      : 'add_activity_cover',
-                );
-                setState(() => _coverImage = image);
-              },
-            ),
+            _cityField(l),
             const SizedBox(height: 16),
-            Text(l.tr('activity.label.startDate'),
-                style: Theme.of(context).textTheme.labelLarge),
+            // Cover image is optional too — no error when missing. Not editable
+            // after creation (keeps uploads/cleanup simple).
+            if (!isEdit) ...[
+              _LabelRow(
+                label: l.tr('activity.label.coverImage'),
+                optionalText: l.tr('activity.label.optional'),
+              ),
+              const SizedBox(height: 6),
+              CoverDropZone(
+                category: _category,
+                onChanged: (image) {
+                  final replacing = _coverImage != null && image != null;
+                  _analytics.buttonClicked(
+                    image == null
+                        ? 'remove_activity_cover'
+                        : replacing
+                        ? 'replace_activity_cover'
+                        : 'add_activity_cover',
+                  );
+                  setState(() => _coverImage = image);
+                },
+              ),
+              const SizedBox(height: 16),
+            ],
+            Text(
+              l.tr('activity.label.startDate'),
+              style: Theme.of(context).textTheme.labelLarge,
+            ),
             const SizedBox(height: 6),
             OutlinedButton.icon(
               onPressed: _pickStart,
@@ -315,7 +405,9 @@ class _CreateActivityScreenState extends State<CreateActivityScreen> {
                 minimumSize: const Size.fromHeight(52),
                 side: _startError != null
                     ? BorderSide(
-                        color: Theme.of(context).colorScheme.error, width: 1.5)
+                        color: Theme.of(context).colorScheme.error,
+                        width: 1.5,
+                      )
                     : null,
               ),
             ),
@@ -332,13 +424,21 @@ class _CreateActivityScreenState extends State<CreateActivityScreen> {
               ),
             const SizedBox(height: 24),
             FilledButton(
+              key: const Key('activity_submit'),
               onPressed: _submitting ? null : _submit,
               child: _submitting
                   ? const SizedBox(
                       height: 18,
                       width: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2))
-                  : Text(l.tr('activity.create.submit')),
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Text(
+                      l.tr(
+                        isEdit
+                            ? 'activity.edit.submit'
+                            : 'activity.create.submit',
+                      ),
+                    ),
             ),
           ],
         ),
@@ -379,6 +479,75 @@ class _CreateActivityScreenState extends State<CreateActivityScreen> {
             ),
           ],
         ),
+      ],
+    );
+  }
+
+  /// City with one-tap suggestions from cities that already have
+  /// activities (busiest first), so hosts reuse one spelling. The feed's city
+  /// filter is built from these values.
+  Widget _cityField(AppLocalizations l) {
+    final q = cityKey(_city.text);
+    final suggestions = _knownCities
+        .where(
+          (c) => q.isEmpty ? true : cityKey(c).startsWith(q) && cityKey(c) != q,
+        )
+        .take(5)
+        .toList();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _LabelRow(label: l.tr('activity.label.city')),
+        const SizedBox(height: 6),
+        TextFormField(
+          key: const Key('activity_city'),
+          controller: _city,
+          textCapitalization: TextCapitalization.words,
+          // Keep the suggestion chips above the keyboard too.
+          scrollPadding: const EdgeInsets.only(bottom: 160),
+          onChanged: (_) {
+            _analytics.inputTyping('activity_city');
+            setState(() {});
+          },
+          decoration: InputDecoration(
+            hintText: l.tr('activity.placeholder.city'),
+            prefixIcon: const Icon(Icons.location_city_outlined),
+          ),
+          validator: (v) {
+            final city = v?.trim() ?? '';
+            if (city.isEmpty) return l.tr('activity.validation.cityRequired');
+            if (city.length > _maxCityLength) {
+              return l.tr('activity.validation.cityTooLong');
+            }
+            if (ContentFilter.hasBlocked(city)) {
+              return l.tr('moderation.blocked');
+            }
+            return null;
+          },
+        ),
+        if (suggestions.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            children: [
+              for (final c in suggestions)
+                ActionChip(
+                  avatar: const Icon(Icons.place_outlined, size: 16),
+                  label: Text(c),
+                  onPressed: () {
+                    _analytics.buttonClicked('pick_suggested_city');
+                    setState(() {
+                      _city.text = c;
+                      _city.selection = TextSelection.collapsed(
+                        offset: c.length,
+                      );
+                    });
+                  },
+                ),
+            ],
+          ),
+        ],
       ],
     );
   }

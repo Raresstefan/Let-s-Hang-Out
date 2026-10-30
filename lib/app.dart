@@ -5,6 +5,9 @@ import 'package:provider/provider.dart';
 import 'core/analytics/analytics_service.dart';
 import 'core/app_scroll_behavior.dart';
 import 'core/l10n/app_localizations.dart';
+import 'core/links/deep_link_service.dart';
+import 'core/notifications/reminder_scheduler.dart';
+import 'core/notifications/reminder_service.dart';
 import 'core/theme/app_theme.dart';
 import 'data/account/account_deletion_service.dart';
 import 'data/auth/auth_service.dart';
@@ -20,12 +23,15 @@ import 'data/repositories/safety_repository.dart';
 import 'data/repositories/user_repository.dart';
 import 'data/storage/activity_cover_storage.dart';
 import 'data/storage/inline_activity_cover_storage.dart';
+import 'features/auth/email_verification_screen.dart';
 import 'features/auth/sign_in_screen.dart';
 import 'features/circles/circles_controller.dart';
 import 'features/create/activity_creator.dart';
 import 'features/feed/feed_controller.dart';
 import 'features/friends/friends_controller.dart';
+import 'features/home/deep_link_opener.dart';
 import 'features/home/home_shell.dart';
+import 'features/home/reminder_sync.dart';
 import 'features/legal/terms_gate.dart';
 import 'features/safety/safety_controller.dart';
 
@@ -40,12 +46,16 @@ class HangOutApp extends StatelessWidget {
     required this.chatRepository,
     required this.analytics,
     ActivityCoverStorage? coverStorage,
+    DeepLinkService? deepLinks,
+    ReminderService? reminders,
     UserRepository? userRepository,
     FriendRepository? friendRepository,
     CircleRepository? circleRepository,
     SafetyRepository? safetyRepository,
   }) : safetyRepository = safetyRepository ?? MockSafetyRepository(),
        coverStorage = coverStorage ?? InlineActivityCoverStorage(),
+       deepLinks = deepLinks ?? DeepLinkService.none(),
+       reminders = reminders ?? ReminderService(NoopReminderScheduler()),
        userRepository = userRepository ?? _fallbackUserRepository,
        friendRepository = friendRepository ?? _fallbackFriendRepository,
        circleRepository =
@@ -60,6 +70,8 @@ class HangOutApp extends StatelessWidget {
   final SafetyRepository safetyRepository;
   final AnalyticsService analytics;
   final ActivityCoverStorage coverStorage;
+  final DeepLinkService deepLinks;
+  final ReminderService reminders;
 
   // Lets the auth gate pop any routes pushed on top of the root (e.g. the
   // Profile page, opened via Navigator.push from the avatar button) when
@@ -91,6 +103,8 @@ class HangOutApp extends StatelessWidget {
         Provider<CircleRepository>.value(value: circleRepository),
         Provider<SafetyRepository>.value(value: safetyRepository),
         Provider<ActivityCoverStorage>.value(value: coverStorage),
+        ChangeNotifierProvider<DeepLinkService>.value(value: deepLinks),
+        ChangeNotifierProvider<ReminderService>.value(value: reminders),
         Provider<ActivityCreator>(
           create: (_) => ActivityCreator(repository, coverStorage),
         ),
@@ -135,6 +149,7 @@ class HangOutApp extends StatelessWidget {
         ChangeNotifierProvider<CirclesController>(
           create: (_) => CirclesController(
             circleRepository: circleRepository,
+            chatRepository: chatRepository,
             userRepository: userRepository,
             authService: authService,
             analytics: analytics,
@@ -168,11 +183,17 @@ class HangOutApp extends StatelessWidget {
               WidgetsBinding.instance.addPostFrameCallback((_) {
                 _navigatorKey.currentState?.popUntil((r) => r.isFirst);
               });
+              // Don't leave this user's reminders for whoever signs in next.
+              reminders.cancelAll();
             }
             // Signed-in users must accept the community rules before using
             // the app (App Store 1.2 / Play UGC policy).
-            return auth.isSignedIn
-                ? const TermsGate(child: HomeShell())
+            return auth.isEmailVerificationPending
+                ? const EmailVerificationScreen()
+                : auth.isSignedIn
+                ? const TermsGate(
+                    child: DeepLinkOpener(child: ReminderSync(child: HomeShell())),
+                  )
                 : const SignInScreen();
           },
         ),

@@ -10,6 +10,7 @@ import '../post_hang/recap_banner.dart';
 import '../profile/profile_avatar_button.dart';
 import 'feed_controller.dart';
 import 'widgets/activity_card.dart';
+import 'widgets/city_filter.dart';
 import 'widgets/emoji_filter_bar.dart';
 
 /// The Discover feed: emoji filter bar on top, scrollable list of activity cards.
@@ -125,6 +126,14 @@ class _FeedScreenState extends State<FeedScreen> {
                 ),
               ),
             ),
+            if (controller.city != null ||
+                controller.cityOptions.isNotEmpty)
+              CityFilterChip(
+                selected: controller.city,
+                options: controller.cityOptions,
+                totalCount: controller.discoverableCount,
+                onChanged: controller.setCity,
+              ),
             EmojiFilterBar(
               active: controller.activeFilter,
               onSelected: controller.toggleFilter,
@@ -170,15 +179,33 @@ class _FeedScreenState extends State<FeedScreen> {
     }
     final visible = controller.visibleActivities;
     if (visible.isEmpty) {
-      // The feed has activities, but none match the active filter / search.
+      // Either nothing matches the active filter / search, or everything
+      // loaded has since started.
+      final filtering = controller.activeFilter != null ||
+          controller.city != null ||
+          controller.query.trim().isNotEmpty;
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(32),
-          child: Text(
-            l.tr('feed.noMatches'),
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                controller.city != null
+                    ? l.tr('feed.city.empty', {'city': controller.city!})
+                    : l.tr(filtering ? 'feed.noMatches' : 'feed.empty'),
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant),
+              ),
+              if (controller.city != null) ...[
+                const SizedBox(height: 12),
+                TextButton(
+                  onPressed: () => controller.setCity(null),
+                  child: Text(l.tr('feed.city.showAll')),
+                ),
+              ],
+            ],
           ),
         ),
       );

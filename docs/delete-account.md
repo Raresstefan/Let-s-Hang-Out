@@ -19,7 +19,7 @@ Your account is deleted immediately.
 Send an email to **letshangout45@gmail.com**:
 
 - **Subject:** Delete my account
-- **From:** the Google email address you use to sign in to Hang Out
+- **From:** the email address you use to sign in to Hang Out (for Sign in with Apple with "Hide My Email", mention the relay address shown in your Apple ID settings)
 
 We may reply to confirm that the account belongs to you. We delete the account within **30 days** of receiving your request.
 

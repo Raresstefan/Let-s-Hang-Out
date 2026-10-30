@@ -75,28 +75,62 @@ class FirestoreChatRepository implements ChatRepository {
 
   @override
   Stream<List<Message>> messages(String activityId) {
+    // Metadata changes flip a message from "sending" to "sent" once the
+    // server acknowledges the write.
     return _messagesCol(activityId)
         .orderBy('createdAt')
-        .snapshots()
+        .snapshots(includeMetadataChanges: true)
         .map((q) => q.docs.map(_messageFromDoc).toList());
   }
 
   @override
   Future<void> sendMessage(
     String activityId, {
+    required String messageId,
     required String senderId,
     required String text,
   }) async {
     final now = FieldValue.serverTimestamp();
-    await _messagesCol(activityId).add({
-      'senderId': senderId,
-      'text': text,
-      'createdAt': now,
-      'type': 'user',
-    });
-    await _chatDoc(
-      activityId,
-    ).update({'lastMessageText': text, 'lastMessageAt': now});
+    final doc = _messagesCol(activityId).doc(messageId);
+    try {
+      await doc.set({
+        'senderId': senderId,
+        'text': text,
+        'createdAt': now,
+        'type': 'user',
+      });
+    } on FirebaseException catch (e) {
+      // Messages are create-only. If an earlier attempt reached the server
+      // but its acknowledgement was lost, the retry is rejected — that
+      // message is already sent.
+      if (e.code != 'permission-denied' ||
+          !await _alreadySent(doc, senderId, text)) {
+        rethrow;
+      }
+    }
+    try {
+      await _chatDoc(
+        activityId,
+      ).update({'lastMessageText': text, 'lastMessageAt': now});
+    } catch (_) {
+      // The message is saved; a stale chat-list preview isn't worth failing it.
+    }
+  }
+
+  Future<bool> _alreadySent(
+    DocumentReference<Map<String, dynamic>> doc,
+    String senderId,
+    String text,
+  ) async {
+    try {
+      final snap = await doc.get(const GetOptions(source: Source.server));
+      final data = snap.data();
+      return data != null &&
+          data['senderId'] == senderId &&
+          data['text'] == text;
+    } catch (_) {
+      return false;
+    }
   }
 
   @override
@@ -166,6 +200,9 @@ class FirestoreChatRepository implements ChatRepository {
       systemEvent: SystemEvent.fromId(data['event'] as String?),
       subjectName: data['name'] as String?,
       subjectTitle: data['title'] as String?,
+      status: doc.metadata.hasPendingWrites
+          ? MessageStatus.sending
+          : MessageStatus.sent,
     );
   }
 }

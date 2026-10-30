@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -9,6 +11,9 @@ import 'app.dart';
 import 'core/analytics/analytics_service.dart';
 import 'core/analytics/firebase_analytics_service.dart';
 import 'core/config/app_config.dart';
+import 'core/links/deep_link_service.dart';
+import 'core/notifications/reminder_scheduler.dart';
+import 'core/notifications/reminder_service.dart';
 import 'data/auth/auth_service.dart';
 import 'data/auth/firebase_auth_service.dart';
 import 'data/auth/mock_auth_service.dart';
@@ -91,6 +96,25 @@ Future<void> main() async {
     safetyRepository = FirestoreSafetyRepository();
   }
 
+  // The web demo (mock backend) has no app links.
+  final deepLinks = AppConfig.useMockBackend
+      ? DeepLinkService.none()
+      : DeepLinkService.platform();
+  final mobile = !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.android ||
+          defaultTargetPlatform == TargetPlatform.iOS);
+  final reminders = ReminderService(
+    mobile && !AppConfig.useMockBackend
+        ? LocalReminderScheduler()
+        : NoopReminderScheduler(),
+  );
+  // A tapped reminder opens its hangout, via the same path as shared links.
+  unawaited(
+    reminders.init(onOpen: deepLinks.openActivity).catchError((Object e) {
+      debugPrint('Reminders unavailable: $e');
+    }),
+  );
+
   runApp(HangOutApp(
     authService: authService,
     repository: repository,
@@ -101,5 +125,7 @@ Future<void> main() async {
     safetyRepository: safetyRepository,
     analytics: analytics,
     coverStorage: coverStorage,
+    deepLinks: deepLinks,
+    reminders: reminders,
   ));
 }

@@ -99,13 +99,15 @@ class MockChatRepository implements ChatRepository {
   @override
   Future<void> sendMessage(
     String activityId, {
+    required String messageId,
     required String senderId,
     required String text,
   }) async {
     final list = _messages.putIfAbsent(activityId, () => []);
+    if (list.any((m) => m.id == messageId)) return;
     list.add(
       Message(
-        id: _uuid.v4(),
+        id: messageId,
         senderId: senderId,
         text: text,
         createdAt: DateTime.now(),

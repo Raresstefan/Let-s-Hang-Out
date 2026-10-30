@@ -26,12 +26,15 @@ class FirestoreActivityRepository implements ActivityRepository {
     // must be part of the query (needs the circleId+startAt composite index —
     // see firestore.indexes.json). Docs missing the field entirely don't match;
     // the app always writes it. Category is filtered client-side to avoid
-    // another composite index.
+    // another composite index. Only upcoming activities: past ones can't be
+    // joined, so Discover hides them (same circleId+startAt index).
     final snap = await _col
         .where('circleId', isNull: true)
+        .where('startAt', isGreaterThan: Timestamp.fromDate(DateTime.now()))
         .orderBy('startAt')
         .get();
     return snap.docs.map(_fromDoc).where((a) {
+      if (a.cancelled) return false;
       if (category != null && a.category != category) return false;
       return true;
     }).toList();
@@ -59,6 +62,7 @@ class FirestoreActivityRepository implements ActivityRepository {
       startAt: activity.startAt,
       hostId: activity.hostId,
       category: activity.category,
+      city: activity.city,
       coverImageUrl: activity.coverImageUrl,
       memberIds: members,
       circleId: activity.circleId,
@@ -66,6 +70,31 @@ class FirestoreActivityRepository implements ActivityRepository {
     await _col.doc(id).set(_toMap(created));
     return created;
   }
+
+  @override
+  Future<Activity?> fetchActivity(String activityId) async {
+    try {
+      final snap = await _col.doc(activityId).get();
+      return snap.exists ? _fromDoc(snap) : null;
+    } on FirebaseException catch (e) {
+      // The rules deny circle hangouts to non-members: treat as not found.
+      if (e.code == 'permission-denied') return null;
+      rethrow;
+    }
+  }
+
+  @override
+  Stream<Activity?> watchActivity(String activityId) => _col
+      .doc(activityId)
+      .snapshots()
+      .map((snap) => snap.exists ? _fromDoc(snap) : null);
+
+  @override
+  Stream<List<Activity>> watchMyActivities(String userId) => _col
+      .where('memberIds', arrayContains: userId)
+      .snapshots()
+      .map((q) => q.docs.map(_fromDoc).toList()
+        ..sort((a, b) => a.startAt.compareTo(b.startAt)));
 
   @override
   Future<Activity> join(String activityId, String userId) async {
@@ -114,7 +143,7 @@ class FirestoreActivityRepository implements ActivityRepository {
         .where('hostId', isEqualTo: hostId)
         .where('circleId', isNull: true)
         .get();
-    final hosted = snap.docs.map(_fromDoc).toList();
+    final hosted = snap.docs.map(_fromDoc).where((a) => !a.cancelled).toList();
     var sum = 0;
     var count = 0;
     for (final a in hosted) {
@@ -153,6 +182,27 @@ class FirestoreActivityRepository implements ActivityRepository {
     return _fromDoc(snap);
   }
 
+  @override
+  Future<Activity> updateActivity(Activity activity) async {
+    final doc = _col.doc(activity.id);
+    await doc.update({
+      'title': activity.title,
+      'description': activity.description,
+      'placeSuggestion': activity.placeSuggestion,
+      'city': activity.city,
+      'startAt': Timestamp.fromDate(activity.startAt),
+      'category': activity.category.id,
+    });
+    return _fromDoc(await doc.get());
+  }
+
+  @override
+  Future<Activity> cancelActivity(String activityId) async {
+    final doc = _col.doc(activityId);
+    await doc.update({'cancelled': true});
+    return _fromDoc(await doc.get());
+  }
+
   Map<String, dynamic> _toMap(Activity a) => {
     'title': a.title,
     'description': a.description,
@@ -160,6 +210,7 @@ class FirestoreActivityRepository implements ActivityRepository {
     'startAt': Timestamp.fromDate(a.startAt),
     'hostId': a.hostId,
     'category': a.category.id,
+    'city': a.city,
     'coverImageUrl': a.coverImageUrl,
     'memberIds': a.memberIds,
     'likedBy': a.likedBy,
@@ -180,6 +231,7 @@ class FirestoreActivityRepository implements ActivityRepository {
       category: ActivityCategory.fromId(
         data['category'] as String? ?? 'drinks',
       ),
+      city: data['city'] as String? ?? '',
       coverImageUrl: data['coverImageUrl'] as String?,
       memberIds: List<String>.from(data['memberIds'] as List? ?? const []),
       likedBy: _readLikedBy(data),
@@ -187,6 +239,7 @@ class FirestoreActivityRepository implements ActivityRepository {
       circleId: data['circleId'] as String?,
       ratings: _readRatings(data),
       removedIds: List<String>.from(data['removedIds'] as List? ?? const []),
+      cancelled: data['cancelled'] as bool? ?? false,
     );
   }
 
