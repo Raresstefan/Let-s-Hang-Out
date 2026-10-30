@@ -172,14 +172,15 @@ flutter build ios        # iOS (then archive in Xcode for App Store)
 
 ## What's implemented in this first version
 
-- **Discover feed** — scrollable list of activity **Cards**, each with a cover image
-  background, title, and the current number of people enrolled (per the design spec).
+- **Discover feed** — scrollable list of activity **Cards**, with category artwork,
+  a title, and the current number of people enrolled. Previously uploaded covers
+  can still appear when available.
 - **Emoji filter bar** — tap an emoji (🍺 🎾 ☕ 🍔 🎵 ⚽) to filter the feed to that
   category; tap the active one again to clear the filter.
 - **Bottom menu** — Discover · Friends · **`+` (centre, highlighted FAB)** · My Activities ·
   Profile. The `+` opens the create-activity flow.
 - **Create activity** — host enters title, description, place suggestion, start date/time,
-  category, and an optional cover image.
+  and category. New activities use category artwork instead of uploaded covers.
 - **Join** — one tap to join an activity (updates the enrolled count).
 - **My Activities / Friends / Profile** — screens scaffolded (Friends/Profile stubbed
   pending the backend + social graph).
@@ -265,11 +266,11 @@ delegate.
 
 ## Wiring the real backend (Firebase)
 
-Chosen stack: **Firebase** (Auth, Cloud Firestore, Cloud Messaging, Storage). It covers all
-the product's needs — real-time group chat, activity storage, image uploads, and push
-notifications — with a generous free tier and pay-as-you-go scaling.
+The current backend uses **Firebase Authentication, Cloud Firestore and Firebase Analytics**.
+Profile pictures are stored in Firestore; new activities do not upload cover images.
+Activity reminders are local notifications, not Firebase Cloud Messaging pushes.
 
-1. `flutter pub add firebase_core firebase_auth cloud_firestore firebase_messaging firebase_storage firebase_analytics`
+1. Install the existing dependencies with `flutter pub get`.
 2. `dart pub global activate flutterfire_cli && flutterfire configure` (generates
    `firebase_options.dart`, `google-services.json`, `GoogleService-Info.plist`).
 3. In `lib/core/config/app_config.dart` set `useMockBackend = false`; `main.dart` then wires
@@ -281,8 +282,8 @@ notifications — with a generous free tier and pay-as-you-go scaling.
 
 | Concern | Choice | Why |
 |---------|--------|-----|
-| Backend / DB / chat / auth | **Firebase** (Firestore + Auth + Storage) | Real-time chat at free-tier scale; no servers to run. Costs grow only with usage. |
-| Push notifications (incl. the 2h-before reminder) | **Firebase Cloud Messaging** | Free, cross-platform. The reminder is best scheduled server-side (Cloud Function) so it fires even when the app is closed. |
+| Backend / DB / chat / auth | **Firebase** (Firestore + Auth) | Real-time chat without a custom server. Spark has usage limits; Blaze is pay-as-you-go. |
+| Activity reminders | **Local notifications** | Scheduled on the device; chat-message push notifications are not implemented. |
 | Analytics events | **Firebase Analytics** (free, unlimited events) behind our `AnalyticsService` abstraction | No per-event cost; swap to PostHog later without touching call sites if we need richer product analytics. |
 | A/B testing (future) | **Firebase Remote Config + A/B Testing** | Free, already in the stack; no extra vendor. |
 | AI activity recommendations (future) | Start rule-based ("most joined / highest rated"); later a lightweight model or hosted LLM fed by Firestore engagement data | Defer ML cost until there's data; the `isSuggested`/`likeCount` fields already model the surface. |

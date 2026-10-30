@@ -34,7 +34,7 @@ We collect only the data needed to run the service:
 - The date and version of the Terms of Service you accepted
 
 **Content you create:**
-- Activities you create (title, description, place, time, category) and their cover images, if you upload one
+- Activities you create (title, description, place, time, category). Older versions also allowed activity cover images; previously uploaded covers may still be retained.
 - Activities and circles (groups) you join, like, or leave
 - Friend relationships and friend/circle requests
 - Group chat messages you send
@@ -74,17 +74,17 @@ Hang Out is built on Google Firebase. Your data is stored and processed by:
 
 - **Google Firebase Authentication**, **Google Sign-In** and **Sign in with Apple** (Apple Inc.): sign-in. Apple's privacy policy: https://www.apple.com/legal/privacy/
 - **Google Cloud Firestore**: your profile (including an uploaded profile photo), activities, ratings, friends, circles, chat messages, reports, blocks, and terms acceptance.
-- **Google Cloud Storage for Firebase**: activity cover images.
+- **Google Cloud Storage for Firebase**: activity cover images uploaded using an older version, if retained. The current version no longer uploads activity covers.
 - **Google Analytics for Firebase**: usage and device data described in section 2.
 
 Google processes this data on our behalf as a sub-processor and may store it on servers outside your country, including in the United States. See Google's privacy policy at https://policies.google.com/privacy and how Google uses data from apps that use its services at https://policies.google.com/technologies/partner-sites. Data is transmitted over encrypted (HTTPS/TLS) connections.
 
-The SDKs integrated in the app that handle personal data are: `firebase_core`, `firebase_auth`, `google_sign_in`, `cloud_firestore`, `firebase_storage`, and `firebase_analytics`.
+The SDKs integrated in the app that handle personal data are: `firebase_core`, `firebase_auth`, `google_sign_in`, `cloud_firestore`, and `firebase_analytics`.
 
 ## 6. Data sharing & visibility
 
 - Your **profile** (name, photo, bio, interests) is visible to other signed-in users.
-- **Activities** you create, including their cover images, are visible to other users. Members of an activity can see who else is going.
+- **Activities** you create, including any previously uploaded covers that remain available, are visible to other users. Members of an activity can see who else is going.
 - **Chat messages** are visible to the members of that group chat.
 - **Reports** are visible only to us. The person you report is not told who reported them.
 - **Blocks** are not announced to the blocked user.

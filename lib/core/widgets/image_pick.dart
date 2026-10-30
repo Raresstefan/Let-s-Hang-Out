@@ -6,9 +6,7 @@ import 'package:image/image.dart' as image;
 
 import 'cover_image.dart';
 
-/// Shared image picking/validation logic used by both the activity cover drop
-/// zone and the profile avatar drop zone. Keeps the desktop_drop + file_picker
-/// + png/jpg validation + data-URL encoding in one place.
+/// Image picking and validation for profile avatars.
 const List<String> kImageExtensions = ['png', 'jpg', 'jpeg'];
 
 bool isAllowedImageName(String name) {

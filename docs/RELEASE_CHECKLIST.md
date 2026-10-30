@@ -22,8 +22,8 @@ developer. Costs: Google Play **$25 one-time**, Apple **$99/year**. Docs hosting
 - [x] Web account-deletion page for Google Play → `docs/delete-account.md`
       (`https://raresstefan.github.io/Let-s-Hang-Out/delete-account` once Pages is on).
       Enter it in Play Console → App content → Data safety → Delete account URL.
-- [x] Privacy policy matches the code: uploaded photos (avatar in Firestore, activity
-      covers in Firebase Storage), Firebase Analytics, reports/blocks, terms acceptance.
+- [x] Privacy policy matches the code: profile photos in Firestore, possible legacy
+      activity covers in Firebase Storage, Firebase Analytics, reports/blocks and terms acceptance.
       Advertising-ID collection is disabled (Android manifest
       `google_analytics_adid_collection_enabled=false`; iOS Podfile
       `$FirebaseAnalyticsWithoutAdIdSupport = true`). If you add an SDK or start
@@ -94,9 +94,9 @@ developer. Costs: Google Play **$25 one-time**, Apple **$99/year**. Docs hosting
       server has it, "Not sent. Tap to retry." on failure (long-press to
       delete). Client-generated message ids prevent duplicate retries. No
       delivered/read receipts.
-- [x] Profile and cover image selection opens Photos on iOS; other platforms
-      retain the filtered file picker. Photo permission text also explains
-      saving story images.
+- [x] Profile image selection opens Photos on iOS; other platforms retain the
+      filtered file picker. New activities no longer offer cover uploads.
+      Photo permission text also explains saving story images.
 - [x] Selected profile photos are resized, saved to the user profile and restored
       on reopening. Sign-in preserves the saved avatar; failed saves show an error.
 - [x] User safety (store requirement — Apple 1.2 / Play UGC policy): report user /
@@ -134,7 +134,7 @@ policy. Declare exactly this:
 | Name | Yes | Yes | App functionality |
 | Email address | Yes | Yes | App functionality, account management |
 | User ID | Yes | Yes | App functionality |
-| Photos (Google avatar, uploaded avatar, activity cover images) | Yes | Yes | App functionality |
+| Photos (Google avatar, uploaded avatar; legacy activity covers where retained) | Yes | Yes | App functionality |
 | Other user content (bio, interests, activities, chat messages, ratings, reports, block list) | Yes | Yes | App functionality, safety |
 | App interactions / product interaction (Firebase Analytics events) | Yes | Not linked by us* | Analytics |
 | Device or other IDs (Analytics app-instance ID) | Yes | Not linked by us* | Analytics |
@@ -179,9 +179,10 @@ The app never calls `setUserId`, so Analytics data isn't tied to the account by 
 - [ ] In Firebase Authentication, confirm Email/Password is enabled. On a real
       device, verify account creation, email delivery and verification, sign-in,
       password reset, and password confirmation when deleting an account.
-- [ ] Publish the updated `firestore.rules` and `storage.rules` in the Firebase
-      console. Until both are published, email verification is enforced by the
-      app but not by those backend rules.
+- [ ] Publish the updated `firestore.rules` in the Firebase console. Until then,
+      email verification is enforced by the app but not by those backend rules.
+- [ ] If retaining a Blaze-enabled bucket for older activity covers, review and
+      publish `storage.rules` separately. The current app does not upload covers.
 - [ ] Publish the updated privacy policy and terms where they are hosted.
 - [ ] `flutter build appbundle --release` and `flutter build ipa` both succeed.
 - [ ] Install release AAB (internal testing track) + a TestFlight build on real

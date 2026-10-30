@@ -21,12 +21,9 @@ import 'data/repositories/mock_safety_repository.dart';
 import 'data/repositories/mock_user_repository.dart';
 import 'data/repositories/safety_repository.dart';
 import 'data/repositories/user_repository.dart';
-import 'data/storage/activity_cover_storage.dart';
-import 'data/storage/inline_activity_cover_storage.dart';
 import 'features/auth/email_verification_screen.dart';
 import 'features/auth/sign_in_screen.dart';
 import 'features/circles/circles_controller.dart';
-import 'features/create/activity_creator.dart';
 import 'features/feed/feed_controller.dart';
 import 'features/friends/friends_controller.dart';
 import 'features/home/deep_link_opener.dart';
@@ -45,7 +42,6 @@ class HangOutApp extends StatelessWidget {
     required this.repository,
     required this.chatRepository,
     required this.analytics,
-    ActivityCoverStorage? coverStorage,
     DeepLinkService? deepLinks,
     ReminderService? reminders,
     UserRepository? userRepository,
@@ -53,7 +49,6 @@ class HangOutApp extends StatelessWidget {
     CircleRepository? circleRepository,
     SafetyRepository? safetyRepository,
   }) : safetyRepository = safetyRepository ?? MockSafetyRepository(),
-       coverStorage = coverStorage ?? InlineActivityCoverStorage(),
        deepLinks = deepLinks ?? DeepLinkService.none(),
        reminders = reminders ?? ReminderService(NoopReminderScheduler()),
        userRepository = userRepository ?? _fallbackUserRepository,
@@ -69,7 +64,6 @@ class HangOutApp extends StatelessWidget {
   final CircleRepository circleRepository;
   final SafetyRepository safetyRepository;
   final AnalyticsService analytics;
-  final ActivityCoverStorage coverStorage;
   final DeepLinkService deepLinks;
   final ReminderService reminders;
 
@@ -102,12 +96,8 @@ class HangOutApp extends StatelessWidget {
         Provider<FriendRepository>.value(value: friendRepository),
         Provider<CircleRepository>.value(value: circleRepository),
         Provider<SafetyRepository>.value(value: safetyRepository),
-        Provider<ActivityCoverStorage>.value(value: coverStorage),
         ChangeNotifierProvider<DeepLinkService>.value(value: deepLinks),
         ChangeNotifierProvider<ReminderService>.value(value: reminders),
-        Provider<ActivityCreator>(
-          create: (_) => ActivityCreator(repository, coverStorage),
-        ),
         Provider<AccountDeletionService>(
           create: (_) => AccountDeletionService(
             authService: authService,

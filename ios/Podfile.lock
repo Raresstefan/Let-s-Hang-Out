@@ -1252,9 +1252,6 @@ PODS:
   - Firebase/Firestore (12.19.0):
     - Firebase/CoreOnly
     - FirebaseFirestore (~> 12.19.0)
-  - Firebase/Storage (12.19.0):
-    - Firebase/CoreOnly
-    - FirebaseStorage (~> 12.19.0)
   - firebase_analytics (12.6.0):
     - firebase_core
     - FirebaseAnalytics/Core (= 12.19.0)
@@ -1265,10 +1262,6 @@ PODS:
     - Flutter
   - firebase_core (4.15.0):
     - Firebase/CoreOnly (= 12.19.0)
-    - Flutter
-  - firebase_storage (13.6.0):
-    - Firebase/Storage (= 12.19.0)
-    - firebase_core
     - Flutter
   - FirebaseAnalytics/Core (12.19.0):
     - FirebaseCore (~> 12.19.0)
@@ -1324,13 +1317,6 @@ PODS:
     - GoogleUtilities/UserDefaults (~> 8.1)
     - PromisesObjC (~> 2.4)
   - FirebaseSharedSwift (12.19.0)
-  - FirebaseStorage (12.19.0):
-    - FirebaseAppCheckInterop (~> 12.19.0)
-    - FirebaseAuthInterop (~> 12.19.0)
-    - FirebaseCore (~> 12.19.0)
-    - FirebaseCoreExtension (~> 12.19.0)
-    - GoogleUtilities/Environment (~> 8.1)
-    - GTMSessionFetcher/Core (< 6.0, >= 3.4)
   - Flutter (1.0.0)
   - flutter_local_notifications (0.0.1):
     - Flutter
@@ -1512,7 +1498,6 @@ DEPENDENCIES:
   - firebase_analytics (from `.symlinks/plugins/firebase_analytics/ios`)
   - firebase_auth (from `.symlinks/plugins/firebase_auth/ios`)
   - firebase_core (from `.symlinks/plugins/firebase_core/ios`)
-  - firebase_storage (from `.symlinks/plugins/firebase_storage/ios`)
   - Flutter (from `Flutter`)
   - flutter_local_notifications (from `.symlinks/plugins/flutter_local_notifications/ios`)
   - google_sign_in_ios (from `.symlinks/plugins/google_sign_in_ios/darwin`)
@@ -1543,7 +1528,6 @@ SPEC REPOS:
     - FirebaseFirestoreInternal
     - FirebaseInstallations
     - FirebaseSharedSwift
-    - FirebaseStorage
     - GoogleAppMeasurement
     - GoogleSignIn
     - GoogleUtilities
@@ -1571,8 +1555,6 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/firebase_auth/ios"
   firebase_core:
     :path: ".symlinks/plugins/firebase_core/ios"
-  firebase_storage:
-    :path: ".symlinks/plugins/firebase_storage/ios"
   Flutter:
     :path: Flutter
   flutter_local_notifications:
@@ -1606,7 +1588,6 @@ SPEC CHECKSUMS:
   firebase_analytics: 80ea774fed33f7b3512a66a39fab25703cc8a4ca
   firebase_auth: 09023e4cff3162bed3375fb2f4f350b07c422206
   firebase_core: 55de508663ceda7d1dc369a32b327a5655019ae2
-  firebase_storage: e9d687991b05f1a3b408ca6b9feeb9cc41419407
   FirebaseAnalytics: e9f8c369447e453da23f0455a06e4910bad10de0
   FirebaseAppCheckInterop: bd4b791ffaed7ae719304af6369d243ddee5e4a0
   FirebaseAuth: 8c38236f67e5e3dd6aacf3e0c46b3eed31e9c820
@@ -1618,7 +1599,6 @@ SPEC CHECKSUMS:
   FirebaseFirestoreInternal: c5fe347a024926551b8cb6d6b3ba78f19a7b525e
   FirebaseInstallations: f70a49eed611f5602f373e40974b3b01556ac217
   FirebaseSharedSwift: c91f36aeaa566e12b682caacc40d34c8303c3124
-  FirebaseStorage: 357354fbde2ba62983c0fe5d9cf10155046b5404
   Flutter: 71a624a5bc0c04062bf19101d501e466baf2fb47
   flutter_local_notifications: a5a732f069baa862e728d839dd2ebb904737effb
   google_sign_in_ios: 000870aa06da9b28d1d0bf7ef70ff0213059dd28

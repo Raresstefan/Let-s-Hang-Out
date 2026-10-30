@@ -4,39 +4,42 @@ import 'dart:typed_data';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
-/// Renders an activity cover image from a source string that may be either:
+/// Renders a profile photo or legacy activity cover from a source that may be:
 ///   - a remote URL (`http://` / `https://`)  -> cached network image
 ///   - an inline data URL (`data:image/...;base64,...`) -> decoded in-memory
-///
-/// The data-URL path lets a user's drag-dropped/picked image render with no
-/// backend. Once Firebase Storage is wired, picked images upload there and the
-/// source becomes a normal https URL — this widget handles both transparently.
 class CoverImage extends StatelessWidget {
-  const CoverImage({super.key, required this.source, this.fit = BoxFit.cover});
+  const CoverImage({
+    super.key,
+    required this.source,
+    this.fit = BoxFit.cover,
+    this.errorFallback,
+  });
 
   final String source;
   final BoxFit fit;
+  final Widget? errorFallback;
 
   bool get _isDataUrl => source.startsWith('data:');
+  Widget get _fallback => errorFallback ?? const ColoredBox(color: Colors.black12);
 
   @override
   Widget build(BuildContext context) {
     if (_isDataUrl) {
       final bytes = _decodeDataUrl(source);
       if (bytes == null || bytes.isEmpty) {
-        return const ColoredBox(color: Colors.black12);
+        return _fallback;
       }
       return Image.memory(
         bytes,
         fit: fit,
-        errorBuilder: (_, __, ___) => const ColoredBox(color: Colors.black12),
+        errorBuilder: (_, __, ___) => _fallback,
       );
     }
     return CachedNetworkImage(
       imageUrl: source,
       fit: fit,
       placeholder: (_, __) => Container(color: Colors.black12),
-      errorWidget: (_, __, ___) => const ColoredBox(color: Colors.black12),
+      errorWidget: (_, __, ___) => _fallback,
     );
   }
 
@@ -60,9 +63,7 @@ class CoverImage extends StatelessWidget {
     return MemoryImage(bytes);
   }
 
-  /// Builds a `data:` URL from raw image [bytes] for a given [extension]
-  /// (e.g. `png`, `jpg`). Used by the cover picker so the value flows through
-  /// the existing `coverImageUrl` String field unchanged.
+  /// Builds a `data:` URL from raw image [bytes] for a given [extension].
   static String dataUrlFromBytes(Uint8List bytes, String extension) {
     final mime = (extension.toLowerCase() == 'png')
         ? 'image/png'

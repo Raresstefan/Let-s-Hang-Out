@@ -143,15 +143,18 @@ class StoryCard extends StatelessWidget {
   Widget _background(Activity a, Color cat) {
     switch (style) {
       case StoryCardStyle.photo:
+        final fallback = DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: CategoryStyle.gradient(a.category),
+          ),
+        );
         return Stack(
           fit: StackFit.expand,
           children: [
             if (a.coverImageUrl != null && a.coverImageUrl!.isNotEmpty)
-              CoverImage(source: a.coverImageUrl!)
+              CoverImage(source: a.coverImageUrl!, errorFallback: fallback)
             else
-              DecoratedBox(
-                  decoration: BoxDecoration(
-                      gradient: CategoryStyle.gradient(a.category))),
+              fallback,
             const DecoratedBox(
               decoration: BoxDecoration(
                 gradient: LinearGradient(

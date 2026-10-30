@@ -242,3 +242,5 @@ Ordering balances impact, dependency, and the "fix the leaks first" principle.
   agreement checkbox; `kTermsVersion` → 2 so everyone re-accepts). Added
   `docs/delete-account.md` (Play's web deletion URL). Advertising-ID collection disabled on
   Android (manifest) and iOS (Podfile) so the "no ad identifiers" claim holds.
+- _2026-10-30_ — Removed activity cover uploads and the app's Firebase Storage dependency.
+  New activities use category artwork; existing cover URLs remain compatible where available.

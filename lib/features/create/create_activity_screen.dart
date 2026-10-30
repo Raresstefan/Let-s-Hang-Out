@@ -4,19 +4,16 @@ import 'package:provider/provider.dart';
 import '../../core/analytics/analytics_service.dart';
 import '../../core/l10n/app_localizations.dart';
 import '../../core/moderation/content_filter.dart';
-import '../../core/widgets/image_pick.dart';
 import '../../data/auth/auth_service.dart';
+import '../../data/repositories/activity_repository.dart';
 import '../../data/repositories/chat_repository.dart';
 import '../../data/repositories/user_repository.dart';
-import '../../data/storage/activity_cover_storage.dart';
 import '../../domain/models/activity.dart';
 import '../../domain/models/activity_category.dart';
 import '../../domain/models/city_names.dart';
 import '../../domain/models/message.dart';
 import '../categories/activity_category_picker.dart';
 import '../feed/feed_controller.dart';
-import 'activity_creator.dart';
-import 'widgets/cover_drop_zone.dart';
 
 /// Host-facing form to create a new activity. Title, description, place and
 /// start date are all required (entered by the host, per the spec).
@@ -67,8 +64,6 @@ class _CreateActivityScreenState extends State<CreateActivityScreen> {
       .cityOptions
       .map((o) => o.name)
       .toList();
-
-  PickedImage? _coverImage;
 
   DateTime? _startAt;
   String? _startError; // inline validation message for the date picker
@@ -206,35 +201,9 @@ class _CreateActivityScreenState extends State<CreateActivityScreen> {
     final uid = auth.currentUserId;
     final Activity created;
     try {
-      created = await context.read<ActivityCreator>().create(
-        draft,
-        coverBytes: _coverImage?.bytes,
-      );
+      created = await context.read<ActivityRepository>().createActivity(draft);
       await controller.load();
-      if (_coverImage != null) {
-        _analytics.actionSuccess('uploadActivityCover');
-      }
       _analytics.actionSuccess('createActivity');
-    } on ActivityCoverUploadException catch (error, stackTrace) {
-      FlutterError.reportError(
-        FlutterErrorDetails(exception: error, stack: stackTrace),
-      );
-      if (!mounted) return;
-      setState(() => _submitting = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(l.tr('activity.create.coverUploadFailed')),
-          duration: const Duration(seconds: 6),
-          // Actions make snack bars stay up by default; only screen-reader
-          // users keep this one until they act.
-          persist: MediaQuery.accessibleNavigationOf(context),
-          action: SnackBarAction(
-            label: l.tr('activity.create.coverRemove'),
-            onPressed: () => setState(() => _coverImage = null),
-          ),
-        ),
-      );
-      return;
     } catch (error, stackTrace) {
       FlutterError.reportError(
         FlutterErrorDetails(exception: error, stack: stackTrace),
@@ -365,30 +334,6 @@ class _CreateActivityScreenState extends State<CreateActivityScreen> {
             const SizedBox(height: 16),
             _cityField(l),
             const SizedBox(height: 16),
-            // Cover image is optional too — no error when missing. Not editable
-            // after creation (keeps uploads/cleanup simple).
-            if (!isEdit) ...[
-              _LabelRow(
-                label: l.tr('activity.label.coverImage'),
-                optionalText: l.tr('activity.label.optional'),
-              ),
-              const SizedBox(height: 6),
-              CoverDropZone(
-                category: _category,
-                onChanged: (image) {
-                  final replacing = _coverImage != null && image != null;
-                  _analytics.buttonClicked(
-                    image == null
-                        ? 'remove_activity_cover'
-                        : replacing
-                        ? 'replace_activity_cover'
-                        : 'add_activity_cover',
-                  );
-                  setState(() => _coverImage = image);
-                },
-              ),
-              const SizedBox(height: 16),
-            ],
             Text(
               l.tr('activity.label.startDate'),
               style: Theme.of(context).textTheme.labelLarge,

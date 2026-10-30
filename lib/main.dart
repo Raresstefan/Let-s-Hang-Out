@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
@@ -35,9 +34,6 @@ import 'data/repositories/mock_safety_repository.dart';
 import 'data/repositories/mock_user_repository.dart';
 import 'data/repositories/safety_repository.dart';
 import 'data/repositories/user_repository.dart';
-import 'data/storage/activity_cover_storage.dart';
-import 'data/storage/firebase_activity_cover_storage.dart';
-import 'data/storage/inline_activity_cover_storage.dart';
 import 'firebase_options.dart';
 
 Future<void> main() async {
@@ -54,11 +50,9 @@ Future<void> main() async {
   late final FriendRepository friendRepository;
   late final CircleRepository circleRepository;
   late final SafetyRepository safetyRepository;
-  late final ActivityCoverStorage coverStorage;
 
   if (AppConfig.useMockBackend) {
     analytics = ConsoleAnalyticsService();
-    coverStorage = InlineActivityCoverStorage();
     final mockUsers = MockUserRepository();
     userRepository = mockUsers;
     friendRepository = MockFriendRepository(mockUsers);
@@ -75,10 +69,8 @@ Future<void> main() async {
       const host = AppConfig.emulatorHost;
       await FirebaseAuth.instance.useAuthEmulator(host, 9099);
       FirebaseFirestore.instance.useFirestoreEmulator(host, 8085);
-      await FirebaseStorage.instance.useStorageEmulator(host, 9199);
     }
     analytics = FirebaseAnalyticsService();
-    coverStorage = FirebaseActivityCoverStorage();
     // Offline persistence: cache reads locally and queue writes (e.g. a like)
     // while offline, syncing automatically once connectivity returns.
     FirebaseFirestore.instance.settings = const Settings(
@@ -124,7 +116,6 @@ Future<void> main() async {
     circleRepository: circleRepository,
     safetyRepository: safetyRepository,
     analytics: analytics,
-    coverStorage: coverStorage,
     deepLinks: deepLinks,
     reminders: reminders,
   ));

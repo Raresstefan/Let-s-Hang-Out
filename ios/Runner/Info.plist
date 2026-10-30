@@ -28,7 +28,7 @@
 	<!-- Photo picking (file_picker links the Photos/Media APIs; App Store
 	     Connect rejects builds without these purpose strings, ITMS-90683). -->
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Hang Out accesses your photo library when you choose a profile picture or an activity cover, or save a story image to Photos.</string>
+	<string>Hang Out accesses your photo library when you choose a profile picture or save a story image to Photos.</string>
 	<!-- "Save Image" from the story card share sheet (add-only access). -->
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Hang Out saves the story images you create to your photo library.</string>

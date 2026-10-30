@@ -56,6 +56,12 @@ class _ActivityCardState extends State<ActivityCard> {
     final joined = uid != null && a.isMember(uid);
     final liked = uid != null && a.isLikedBy(uid);
     final catColor = CategoryStyle.color(a.category);
+    final coverFallback = DecoratedBox(
+      decoration: BoxDecoration(gradient: CategoryStyle.gradient(a.category)),
+      child: Center(
+        child: Text(a.category.emoji, style: const TextStyle(fontSize: 56)),
+      ),
+    );
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -76,16 +82,12 @@ class _ActivityCardState extends State<ActivityCard> {
             child: Stack(
               fit: StackFit.expand,
               children: [
-                a.coverImageUrl != null
-                    ? CoverImage(source: a.coverImageUrl!)
-                    : DecoratedBox(
-                        decoration:
-                            BoxDecoration(gradient: CategoryStyle.gradient(a.category)),
-                        child: Center(
-                          child: Text(a.category.emoji,
-                              style: const TextStyle(fontSize: 56)),
-                        ),
-                      ),
+                a.coverImageUrl?.isNotEmpty == true
+                    ? CoverImage(
+                        source: a.coverImageUrl!,
+                        errorFallback: coverFallback,
+                      )
+                    : coverFallback,
                 // Bottom scrim so overlaid text is legible.
                 const DecoratedBox(
                   decoration: BoxDecoration(

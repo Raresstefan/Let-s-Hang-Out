@@ -459,6 +459,12 @@ class _HeroAppBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
     final a = activity;
+    final coverFallback = DecoratedBox(
+      decoration: BoxDecoration(gradient: CategoryStyle.gradient(a.category)),
+      child: Center(
+        child: Text(a.category.emoji, style: const TextStyle(fontSize: 72)),
+      ),
+    );
 
     return SliverAppBar(
       expandedHeight: 320,
@@ -529,19 +535,12 @@ class _HeroAppBar extends StatelessWidget {
         background: Stack(
           fit: StackFit.expand,
           children: [
-            a.coverImageUrl != null
-                ? CoverImage(source: a.coverImageUrl!)
-                : DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: CategoryStyle.gradient(a.category),
-                    ),
-                    child: Center(
-                      child: Text(
-                        a.category.emoji,
-                        style: const TextStyle(fontSize: 72),
-                      ),
-                    ),
-                  ),
+            a.coverImageUrl?.isNotEmpty == true
+                ? CoverImage(
+                    source: a.coverImageUrl!,
+                    errorFallback: coverFallback,
+                  )
+                : coverFallback,
             const DecoratedBox(
               decoration: BoxDecoration(
                 gradient: LinearGradient(

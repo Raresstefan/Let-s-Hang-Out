@@ -169,7 +169,6 @@
       "city": "City",
       "category": "Category",
       "startDate": "Start date & time",
-      "coverImage": "Cover image",
       "optional": "optional"
     },
     "edit": {
@@ -195,14 +194,6 @@
     "create": {
       "title": "Create activity",
       "submit": "Create activity",
-      "coverHint": "Drag & drop a cover photo here",
-      "categoryCover": "{category} category cover",
-      "coverFallback": "We'll use this design unless you add a photo.",
-      "coverSelected": "Your photo will be cropped to fit activity cards.",
-      "coverAdd": "Add photo",
-      "coverReplace": "Replace",
-      "coverRemove": "Remove",
-      "coverUploadFailed": "Couldn't upload the cover photo. Remove it or try again.",
       "failed": "Couldn't create the activity. Check your connection and try again."
     },
     "categoryPicker": {

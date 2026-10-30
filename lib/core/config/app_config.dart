@@ -10,7 +10,7 @@ class AppConfig {
   /// When true, use in-memory mock data instead of Firebase.
   static const bool useMockBackend = false;
 
-  /// Debug-only: connect to local Firebase emulators (Auth, Firestore, Storage)
+  /// Debug-only: connect to local Firebase emulators (Auth and Firestore)
   /// loaded with this repo's rules, and sign in with a fake Google credential
   /// for [emulatorUserEmail]. Enable with
   /// `--dart-define=USE_FIREBASE_EMULATORS=true`; never set in release builds.

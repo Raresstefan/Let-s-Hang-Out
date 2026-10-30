@@ -4,6 +4,8 @@ import '../../data/repositories/activity_repository.dart';
 import '../../data/storage/activity_cover_storage.dart';
 import '../../domain/models/activity.dart';
 
+/// Legacy helper retained for existing regression coverage. The app creates
+/// activities through [ActivityRepository] without uploading covers.
 class ActivityCreator {
   ActivityCreator(this._repository, this._coverStorage);
 
